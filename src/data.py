@@ -83,23 +83,13 @@ def to_log_prices(prices: pd.DataFrame) -> pd.DataFrame:
     return np.log(prices)
 
 
-def train_test_split(
-    log_prices: pd.DataFrame, target: str, split_ratio: float = 0.7
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:
-    """Chronological in-sample / out-of-sample split.
+def screening_window(
+    log_prices: pd.DataFrame, years: float = 4.0, trading_days_per_year: int = 252
+) -> pd.DataFrame:
+    """First ``years`` of history, used for the initial statistical screening.
 
-    The split date is chosen so that ``split_ratio`` of the target asset's
-    observations fall in-sample. All screening and calibration must use
-    the in-sample window only, to avoid look-ahead bias.
-
-    Returns
-    -------
-    (in_sample, out_of_sample, split_date)
+    This matches the first train window of the walk-forward validation
+    (see :mod:`src.walk_forward`), so the universe selection never sees
+    data that any fold will later trade on.
     """
-    if not 0 < split_ratio < 1:
-        raise ValueError("split_ratio must be in (0, 1)")
-    idx = log_prices[target].index
-    split_date = idx[int(len(idx) * split_ratio)]
-    in_sample = log_prices.loc[log_prices.index < split_date]
-    out_of_sample = log_prices.loc[log_prices.index >= split_date]
-    return in_sample, out_of_sample, split_date
+    return log_prices.iloc[: int(years * trading_days_per_year)]

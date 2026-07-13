@@ -43,6 +43,7 @@ def run_strategy(
     risk_free_rate: float = 0.04,
     solver: str = "auto",
     min_free_capital: float = 0.01,
+    end_date: pd.Timestamp | None = None,
 ) -> BacktestResult:
     """Run the daily out-of-sample simulation.
 
@@ -52,6 +53,11 @@ def run_strategy(
     triggered signals to the optimizer, which sizes them subject to the
     no-leverage and beta-neutrality constraints. The beta active at entry
     is locked for the life of the position.
+
+    The simulation runs from ``split_date`` to ``end_date`` (inclusive;
+    defaults to the last observation). Positions still open on the final
+    day are force-closed at that day's price, paying exit costs, so that
+    walk-forward folds do not leak positions into each other.
 
     All prices are log-prices; position weights are fractions of the
     portfolio, so the daily PnL is expressed in return space.
@@ -69,8 +75,13 @@ def run_strategy(
     trades: list[dict] = []
 
     start_idx = log_prices.index.get_loc(split_date)
+    end_idx = (
+        len(log_prices)
+        if end_date is None
+        else log_prices.index.get_loc(end_date) + 1
+    )
 
-    for t in range(start_idx, len(log_prices)):
+    for t in range(start_idx, end_idx):
         daily_pnl = 0.0
 
         # 1. Mark-to-market of open positions (t-1 -> t)
@@ -140,7 +151,23 @@ def run_strategy(
                         entry_day[stock] = t
                         entry_dir[stock] = direction
 
-    pnl_oos = pnl.iloc[start_idx:]
+    # Force-close whatever is still open on the final day (fold boundary)
+    last_t = end_idx - 1
+    for stock in equities:
+        if positions[stock] != 0:
+            exit_volume = abs(positions[stock]) * (1 + abs(active_betas[stock]))
+            pnl.iloc[last_t] -= exit_volume * transaction_cost
+            trades.append(
+                {
+                    "stock": stock,
+                    "direction": entry_dir[stock],
+                    "pnl": pnl.iloc[entry_day[stock] : last_t + 1].sum(),
+                    "holding_days": last_t - entry_day[stock],
+                }
+            )
+            positions[stock] = 0.0
+
+    pnl_oos = pnl.iloc[start_idx:end_idx]
     return BacktestResult(
         pnl=pnl_oos,
         sharpe=sharpe_ratio(pnl_oos, risk_free_rate=risk_free_rate),

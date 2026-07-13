@@ -6,51 +6,70 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Tests](https://img.shields.io/badge/tests-pytest-brightgreen)
 
-This project adapts the *Optimal Trading Technique* of [Yang & Malik (2024)](https://doi.org/10.3390/ijfs12030077) — originally designed for cryptocurrency/fiat pairs — to a structurally harder asset class: **soft commodities**. Instead of trading a single spread, the strategy monitors a basket of spreads between the Arabica front-month future and four consumer-staples equities (SJM, KO, MDLZ, JVA), and each day a bi-objective convex optimizer sizes the triggered positions, balancing expected profit against λ-weighted variance under no-leverage and beta-neutrality constraints.
+## Project context
 
-The full write-up is in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
+This began as the final project of the *Commodities Markets and Models* course (MSc Financial Engineering, ESILV Paris, March 2026). The assignment: each student was **assigned a commodity — coffee, in my case — and a reference paper to replicate** on it. Mine was the *Optimal Trading Technique* of [Yang & Malik (2024)](https://doi.org/10.3390/ijfs12030077), originally designed for cryptocurrency/fiat pairs, transposed here onto a structurally harder asset class: soft commodities. The original write-up is in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
 
-> **An honest disclaimer up front:** the headline result is *negative* — the in-sample-optimized configuration loses to buy-and-hold in the 2023–2026 coffee bull market. The project's value lies in the diagnosis: the framework's machinery (optimizer, dynamic hedge, risk compression) worked exactly as designed, while the statistical foundation (cointegration) and the threshold calibration regime did not survive out-of-sample. Negative results, documented rigorously, are still results.
+The repository is the course project refactored into a reproducible research package, plus a few extensions added afterwards:
+
+- **expanding-window walk-forward validation** replacing the report's single 70/30 split (thresholds are re-calibrated per fold and only ever judged on unseen data);
+- a modular `src/` package with unit tests, an open-source solver fallback next to Gurobi, and a free-data reproduction path;
+- a signal-timing bug found and fixed during the refactor (entries were booking the same-day move that triggered them — see the commit history).
+
+**The strategy:** instead of trading a single spread, monitor a basket of spreads between the Arabica front-month future (KC1) and four coffee value-chain equities (SJM, KO, MDLZ, JVA); each day a bi-objective convex optimizer sizes the triggered positions, balancing expected profit against λ-weighted variance under no-leverage and beta-neutrality constraints.
+
+> **An honest disclaimer up front:** across six years of walk-forward test windows the strategy does not beat a buy-and-hold of the coffee future, and the binding constraint is statistical, not methodological — see [the main limitation](#the-main-statistical-limitation) below. The framework's machinery (optimizer, dynamic hedge, volatility compression) works as designed; the value of the project is the rigor of that diagnosis.
 
 ---
 
 ## Results at a glance
 
-Out-of-sample window: Feb 2023 → Feb 2026 (783 trading days), $10,000 initial capital, 10 bps transaction costs per leg.
+**Walk-forward validation** on the Bloomberg dataset: 7 expanding folds, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. Every number below comes from test windows the calibration never saw.
 
-| Metric | B&H KC1 | B&H EW basket | MPTS (IS-opt ±2.1/±1.7) | MPTS (manual ±1.0/±0.6)* |
+| Metric | MPTS walk-forward | B&H KC1 | B&H EW basket |
+|---|---|---|---|
+| Sharpe ratio | 0.06 | 0.53 | −0.03 |
+| Annualized return | 3.6% | 18.5% | 0.7% |
+| Annualized volatility | **17.0%** | 37.7% | 22.8% |
+| Max drawdown | **−33.1%** | −44.3% | −46.1% |
+| Trades | 204 (60% winners) | — | — |
+
+![Walk-forward equity curve vs benchmarks](reports/figures/walk_forward_equity.png)
+
+Per-fold diagnostics (thresholds re-calibrated on each expanding train window — the plateau of the grid search, not the argmax):
+
+| Fold | Test window | Thresholds (open/close) | Trades | Sharpe |
 |---|---|---|---|---|
-| Sharpe ratio | 0.543 | 0.038 | **−0.165** | 0.349 |
-| Annualized return | 18.45% | 2.18% | 1.48% | 9.50% |
-| Annualized volatility | 35.69% | 23.02% | **11.17%** | 20.97% |
-| Max drawdown | −36.19% | −35.41% | **−19.99%** | −30.46% |
-| Trades (3 years) | — | — | 116 | 248 |
+| 1 | Jan 2020 – Dec 2020 | ±2.1 / ±1.0 | 39 | **+1.18** |
+| 2 | Jan 2021 – Nov 2021 | ±2.1 / ±0.7 | 35 | −0.41 |
+| 3 | Dec 2021 – Nov 2022 | ±2.1 / ±0.7 | 32 | +0.31 |
+| 4 | Dec 2022 – Nov 2023 | ±2.0 / ±0.8 | 35 | **+1.02** |
+| 5 | Dec 2023 – Oct 2024 | ±2.1 / ±0.8 | 27 | −1.00 |
+| 6 | Nov 2024 – Oct 2025 | ±2.1 / ±0.6 | 25 | +0.12 |
+| 7 | Nov 2025 – Feb 2026 (short) | ±2.0 / ±0.9 | 11 | −2.80 |
 
-\* *Exploratory configuration with look-ahead — shown to demonstrate that the failure mode is threshold regime mismatch, not the optimization machinery.*
+Median fold Sharpe **0.12**, range **[−2.80, +1.18]**.
 
-![OOS portfolio value comparison](reports/figures/backtest_final_comparison.png)
-
-**What worked:** volatility compressed to a third of the benchmark's, the rolling β-hedge neutralized commodity exposure daily, and the Gurobi allocation sized positions across the basket as intended.
-
-**What didn't, and why:** (1) three of the four pairs are not cointegrated at the 5% level — large-cap staples pass coffee input costs through to consumers, severing the long-run link with the commodity; (2) thresholds calibrated on the moderate-volatility 2016–2023 regime rarely triggered during the explosive OOS run, starving the optimizer of signals.
+**The honest reading.** The strategy is roughly flat-to-mildly-positive across six years while compressing volatility to less than half of the KC1 benchmark's — the market-neutral machinery (β-hedge, variance penalty, optimizer) does exactly what it is designed to do. But the fold-level Sharpe flips sign repeatedly: the mean-reversion edge is regime-dependent and, over this sample, does not survive as a standalone alpha. Given [the statistical limitation below](#the-main-statistical-limitation), that is the expected outcome — and precisely the kind of conclusion a single favorable split can hide. The original single-split study is preserved in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
 
 ---
 
 ## Methodology
 
-**Pipeline** (all calibration strictly in-sample; 70/30 chronological split, no look-ahead):
+**Pipeline** (every estimate is computed on data strictly prior to the window it is used in):
 
-1. **Universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → ADF unit-root test (require I(1)) → Engle-Granger cointegration against KC1 → select the 4 most cointegrated names.
-2. **Signals** — 22-day rolling z-score of each log-spread; open when |z| breaches the entry band, close on reversion. Entry/exit thresholds calibrated by an in-sample grid search maximizing the average Sharpe (open ∈ [1, 2.5), close ∈ [0.5, 2.0), close < open enforced).
-3. **Hedging** — each equity's coffee sensitivity β<sub>i,KC1</sub> is isolated via multivariate OLS on KC1 **and** the consumer-staples ETF (XLP), estimated on a 252-day rolling window and locked at trade entry.
-4. **Position sizing** — every day with triggered signals, solve:
+1. **Universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → ADF unit-root test (require I(1)) → Engle-Granger cointegration against KC1 → select the 4 most cointegrated names. Screening uses only the first train window.
+2. **Walk-forward validation** — expanding (anchored) folds: the first 4 years train fold 1, which trades the following 12 months out-of-sample; each subsequent fold's train window grows by one test window, with a 1-month embargo between train and test. Per fold, re-estimated on the train window only: signal thresholds, mean-reversion speed, expected returns and pair covariances. Only stitched test-fold performance is ever reported.
+3. **Signals** — 22-day rolling z-score of each log-spread; open when |z| breaches the entry band, close on reversion. Thresholds come from a per-fold grid search (open ∈ [1, 2.5), close ∈ [0.5, 2.0), close < open enforced) maximizing the average Sharpe across the basket; to curb per-fold selection bias, the strategy uses the **median of the top decile of the grid** (the plateau) rather than the argmax cell.
+4. **Hedging** — each equity's coffee sensitivity β<sub>i,KC1</sub> is isolated via multivariate OLS on KC1 **and** the consumer-staples ETF (XLP), estimated on a 252-day rolling window (causal by construction) and locked at trade entry.
+5. **Position sizing** — every day with triggered signals, solve:
 
 $$\max_{W}\; \sum_n W_n \cdot (EP_n \odot [1,-1])^{\prime} \;-\; \lambda \sum_n W_n\, \tilde{\Sigma}_n\, W_n^{\prime}$$
 
 $$\text{s.t.}\quad 0 \le W_{long} \le 1,\quad -1 \le W_{short} \le 0,\quad \sum_n (W_{long} - W_{short}) \le \text{capital},\quad \sum_e \beta_{e}\,(W_{long}+W_{short}) = 0$$
 
-   where the expected profit *EP* combines in-sample mean returns with a mean-reversion-speed proxy (average round-trip holding time), and Σ̃ is the pair covariance with sign-flipped off-diagonals. Solved with **Gurobi** (original study) or an open-source **SciPy SLSQP** fallback (this repo, so anyone can run it).
-5. **Backtest** — daily OOS simulation with mark-to-market, per-leg transaction costs, capital recycling and trade logging; benchmarked against KC1 buy-and-hold and an equally weighted equity basket.
+   where the expected profit *EP* combines train-window mean returns with a mean-reversion-speed proxy (average round-trip holding time), and Σ̃ is the pair covariance with sign-flipped off-diagonals. Solved with **Gurobi** (original study) or an open-source **SciPy SLSQP** fallback so anyone can run it.
+6. **Backtest** — daily simulation over each test fold with mark-to-market, per-leg transaction costs, capital recycling, trade logging and forced liquidation at fold boundaries; benchmarked against KC1 buy-and-hold and an equally weighted equity basket over the same stitched period.
 
 <p align="center">
 <img src="reports/figures/zscore_signals_oos.png" width="70%" alt="Z-score signals over the OOS period"/>
@@ -76,12 +95,13 @@ multivariate-pairs-coffee/
 │   ├── download_data.py        # free Yahoo Finance universe builder
 │   └── run_backtest.py         # one-command end-to-end pipeline
 ├── src/
-│   ├── data.py                 # loaders (Bloomberg xlsx / Yahoo csv), IS-OOS split
+│   ├── data.py                 # loaders (Bloomberg xlsx / Yahoo csv), screening window
 │   ├── stat_tests.py           # ADF and Engle-Granger screening
 │   ├── signals.py              # z-scores, threshold grid search, reversion speed
 │   ├── hedging.py              # static & rolling multivariate betas, covariances
 │   ├── optimizer.py            # bi-objective allocation (Gurobi + SciPy backends)
-│   ├── backtest.py             # daily OOS engine, trade log, benchmarks
+│   ├── backtest.py             # daily simulation engine, trade log, benchmarks
+│   ├── walk_forward.py         # expanding folds, plateau calibration, WF runner
 │   └── metrics.py              # Sharpe, drawdown, trade-level statistics
 ├── tests/                      # pytest unit tests (no license, no network needed)
 ├── reports/
@@ -115,7 +135,7 @@ Run the tests:
 pytest tests/ -v
 ```
 
-Every parameter (universe, thresholds, λ, transaction costs, solver) lives in [`configs/default.yaml`](configs/default.yaml).
+Every parameter (universe, walk-forward fold structure, λ, transaction costs, solver) lives in [`configs/default.yaml`](configs/default.yaml).
 
 ## A note on data
 
@@ -125,19 +145,26 @@ So that anyone cloning this repository can still run the pipeline end-to-end, `s
 
 For reference, a validation run on the free Yahoo dataset reproduces the study's qualitative findings: SJM is the only candidate cointegrated with KC1 at the 5% level, the strategy compresses volatility to roughly half of the KC1 benchmark's, and performance remains highly sensitive to the threshold configuration.
 
-## Key findings & limitations
+## The main statistical limitation
 
-- **Cointegration is the binding constraint, not the optimizer.** With Engle-Granger p-values of 0.22–0.53 on three of four pairs, the mean-reversion premise is statistically weak; no allocation scheme can rescue a spread that has no long-run equilibrium.
-- **Threshold calibration is regime-dependent.** IS-optimal bands (±2.1/±1.7) from a calm regime produced near-zero trading activity in a volatile one. This is a general lesson for any threshold-based strategy validated on a single split.
-- **Risk control worked.** Annualized volatility of 11.2% vs 35.7% for the benchmark, and max drawdown roughly halved — the beta-neutrality constraint and variance penalty did their job.
-- **Transaction-cost sensitivity is moderate** at daily frequency (avg holding 3.4–7 days), unlike the intraday original study.
+**There is essentially no cointegration within the assigned equity basket — and this is a constraint of the assigned universe, not of the methodology.** In the screening window only SJM is cointegrated with KC1 at the 5% level; the other candidates show Engle-Granger p-values between 0.22 and 0.53. The economics are intuitive: large consumer-staples companies (Coca-Cola, Mondelēz) have the pricing power to pass coffee input costs through to consumers, which severs the long-run equilibrium between their equity prices and the commodity. Pairs trading exploits mean reversion, and mean reversion requires a stable long-run relationship — no optimizer, hedge or calibration scheme can manufacture one that is statistically absent.
+
+**The acknowledged simple alternative:** trading the **Arabica–Robusta spread (KC1 vs DF1)** directly. The two coffee qualities are economically bound by substitution in roasters' blends, making them a far more natural cointegrated pair than any coffee-adjacent equity. The course assignment was to replicate the multivariate equity-basket framework of the reference paper on the assigned commodity, which is what this repository does — the inter-commodity spread is the obvious next experiment and is listed in the extensions below.
+
+## Other findings
+
+- **Threshold economics are regime-dependent.** The per-fold calibrations drift as the sample grows and the volatility regime shifts — visible directly in the fold table above. This is precisely what a single-split design cannot reveal, and why the walk-forward structure replaced it.
+- **Risk control works.** The beta-neutrality constraint and variance penalty compress volatility to a fraction of the KC1 benchmark's and roughly halve the drawdown, across data sources and configurations.
+- **Transaction-cost sensitivity is moderate** at daily frequency (multi-day average holding), unlike the intraday original study where costs accumulate over thousands of trades.
 
 ## Possible extensions
 
-- Kalman-filter / rolling re-estimation of the hedge ratio instead of static Engle-Granger betas.
+- **Arabica–Robusta (KC1/DF1) inter-commodity spread** — the natural cointegrated pair, per the limitation above.
+- Kalman-filter time-varying hedge ratio instead of static Engle-Granger betas.
 - Johansen cointegration on the full basket rather than pairwise tests.
-- Regime-aware thresholds (e.g. volatility-scaled bands) and walk-forward recalibration.
-- Broader universe: FX of producer countries (BRL, VND), Robusta (DF1), cross-exchange spreads.
+- Volatility-adaptive thresholds (bands scaled by short- vs long-run spread volatility) to react to regime shifts between fold recalibrations.
+- Broader universe: FX of producer countries (BRL, VND), cross-exchange spreads.
+- Deflated Sharpe ratio / probability of backtest overfitting on the fold results.
 
 ## References
 
@@ -148,4 +175,3 @@ For reference, a validation run on the free Yahoo dataset reproduces the study's
 ## Author
 
 **Edoardo Vona** — MSc Financial Engineering, ESILV Paris.
-Course project for *Commodities Markets and Models* (March 2026), subsequently refactored into a reproducible research package.

@@ -14,9 +14,7 @@ long and short legs contribute with opposite signs.
 Two solver backends are provided:
 
 * **Gurobi** (``gurobipy``) — used in the original study; requires a license.
-* **SciPy SLSQP** — open-source fallback so the project is fully
-  reproducible without commercial software. Problem sizes here (a handful
-  of pairs) are trivial for both.
+* **SciPy SLSQP** — open-source fallback so the project is fully reproducible.
 """
 
 from __future__ import annotations
@@ -28,7 +26,7 @@ try:
     import gurobipy as gp
 
     HAS_GUROBI = True
-except ImportError:  # pragma: no cover - depends on local environment
+except ImportError: 
     HAS_GUROBI = False
 
 from scipy.optimize import minimize

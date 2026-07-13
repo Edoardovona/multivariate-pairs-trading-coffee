@@ -55,6 +55,11 @@ def main() -> None:
     args = parser.parse_args()
 
     prices = download_prices(args.start, args.end)
+    if prices.dropna(how="all").empty:
+        raise SystemExit(
+            "Download returned no data (Yahoo Finance may be rate-limiting; "
+            "retry in a few minutes). Existing file left untouched."
+        )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     prices.to_csv(output)

@@ -1,12 +1,9 @@
 """Stationarity and cointegration screening.
 
-Pairs trading rests on two statistical prerequisites, both tested on the
-in-sample window only:
+Pairs trading rests on two statistical prerequisites, both tested on the in-sample window only:
 
-* individual log-price series must be non-stationary, i.e. I(1)
-  (Augmented Dickey-Fuller test);
-* the spread between the anchor and a candidate must be stationary
-  (Engle-Granger two-step cointegration test).
+* individual log-price series must be non-stationary, i.e. I(1) (Augmented Dickey-Fuller test);
+* the spread between the anchor and a candidate must be stationary (Engle-Granger two-step cointegration test).
 """
 
 from __future__ import annotations
@@ -24,8 +21,7 @@ def adf_screen(
     """Run the ADF unit-root test on each eligible log-price series.
 
     Returns a DataFrame sorted by p-value (asset, n_obs, adf_stat, p_value).
-    High p-values fail to reject the unit root — the desired outcome for
-    pairs-trading candidates.
+    High p-values fail to reject the unit root — the desired outcome for pairs-trading candidates.
     """
     exclude = exclude or set()
     rows = []

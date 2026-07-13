@@ -19,14 +19,13 @@ universe:
   exclude: [DF1, COFF, DBA, MOO, XLP, PBJ, DBC,
             WEST, BROS, BRCC, JDEP, LKNCY, REBN, THCH]
 
-split:
-  ratio: 0.7                    # 70% in-sample / 30% out-of-sample
+walk_forward:
+  min_train_years: 4            # first (expanding) train window
+  test_months: 12               # length of each out-of-sample fold
+  embargo_days: 21              # gap between train end and test start
 
 signals:
   zscore_window: 22             # ~1 trading month
-  threshold_mode: grid          # "grid" (in-sample optimized) or "manual"
-  manual_open: 1.0
-  manual_close: 0.6
 
 strategy:
   risk_aversion: 1.0            # lambda in the bi-objective optimization
