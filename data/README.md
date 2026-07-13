@@ -6,11 +6,19 @@ The results reported in [`reports/Multivariate_Pair_Trading.pdf`](../reports/Mul
 were produced with **daily Bloomberg data** (OHLCV, 2016-02-12 to 2026-02-12):
 `KC1` Arabica front-month continuous future, `DF1` Robusta, six sector ETFs/ETNs
 and 17 coffee-value-chain equities. Bloomberg data is proprietary and licensed —
-**it is not and will never be distributed with this repository.**
+**it is not and will never be distributed with this repository** (everything
+under `data/raw/` is git-ignored by design).
+
+The author's local copy lives at `data/raw/CoffeeData.xlsx` and is used via
+
+```bash
+python scripts/run_backtest.py --config configs/bloomberg.yaml
+```
 
 If you have Bloomberg access, export close prices as an Excel file with a date
-column followed by `<TICKER>_LAST` columns, place it under `data/raw/` and point
-`configs/default.yaml` at it. The loader (`src/data.py`) handles both formats.
+column followed by `<TICKER>_LAST` columns, place it at that same path and use
+the same config. The loader (`src/data.py`) auto-detects the format from the
+file extension.
 
 ## Free reproduction path (Yahoo Finance)
 
@@ -26,6 +34,7 @@ methodology differs, prices are adjusted differently for corporate actions, and
 some tickers from the original universe (COFF ETN, NESN on SIX, late-listed
 names) are unavailable or partial. Expect the pipeline to run end-to-end and
 produce qualitatively similar behaviour, but not the exact figures in the report.
+This is the source `configs/default.yaml` points at.
 
 ## Expected schema
 

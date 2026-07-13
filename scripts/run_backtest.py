@@ -68,9 +68,8 @@ def main() -> None:
     print(stat_tests.summary_table(log_is, anchor, adf_results, eg_results)
           .head(6).round(4).to_string())
 
-    # 4. Threshold calibration. Two configurations are evaluated, mirroring
-    # the report: the in-sample-optimized thresholds (methodologically clean)
-    # and a tighter manual band (exploratory, embeds look-ahead) that shows
+    # 4. Threshold calibration. Two configurations are evaluated: the in-sample-optimized
+    # thresholds and a tighter manual band (exploratory, embeds look-ahead) that shows
     # the strategy's sensitivity to threshold regime mismatch.
     if cfg["signals"]["threshold_mode"] == "grid":
         grid_results, _ = signals.grid_search_thresholds(

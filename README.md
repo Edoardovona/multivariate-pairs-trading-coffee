@@ -64,7 +64,8 @@ $$\text{s.t.}\quad 0 \le W_{long} \le 1,\quad -1 \le W_{short} \le 0,\quad \sum_
 multivariate-pairs-coffee/
 ├── README.md
 ├── configs/
-│   └── default.yaml            # every parameter of the pipeline in one place
+│   ├── default.yaml            # every parameter of the pipeline (Yahoo data)
+│   └── bloomberg.yaml          # same pipeline on the original Bloomberg export
 ├── data/
 │   ├── README.md               # data sources, schema, Bloomberg disclaimer
 │   └── raw/                    # git-ignored (proprietary / re-downloadable)
@@ -101,6 +102,13 @@ python scripts/download_data.py      # free Yahoo Finance data → data/raw/pric
 python scripts/run_backtest.py       # screening → calibration → backtest → report
 ```
 
+With the original Bloomberg export (see [A note on data](#a-note-on-data)):
+
+```bash
+# place the export at data/raw/CoffeeData.xlsx, then
+python scripts/run_backtest.py --config configs/bloomberg.yaml
+```
+
 Run the tests:
 
 ```bash
@@ -111,7 +119,9 @@ Every parameter (universe, thresholds, λ, transaction costs, solver) lives in [
 
 ## A note on data
 
-The results in the report and in this README come from a **Bloomberg** daily dataset (Feb 2016 – Feb 2026) which is proprietary and **not distributed** with this repository. `scripts/download_data.py` rebuilds a comparable universe from free Yahoo Finance data (`KC=F` for the Arabica future) so the pipeline runs end-to-end for anyone — but futures roll methodology and adjustments differ, so expect qualitatively similar behaviour rather than the exact reported figures. Details in [`data/README.md`](data/README.md).
+The study was conducted on a **Bloomberg** daily dataset (Feb 2016 – Feb 2026; 2,610 rows × 25 assets). Bloomberg data is proprietary and licensed, so the file is **git-ignored and not distributed** — it lives only in the author's local copy at `data/raw/CoffeeData.xlsx` and is consumed via [`configs/bloomberg.yaml`](configs/bloomberg.yaml).
+
+So that anyone cloning this repository can still run the pipeline end-to-end, `scripts/download_data.py` rebuilds a comparable universe from **free Yahoo Finance data** (`KC=F` for the Arabica future), which the default config points at. Futures roll methodology, adjustments and listing coverage differ between the two sources, so expect qualitatively similar behaviour rather than the exact reported figures. Details in [`data/README.md`](data/README.md).
 
 For reference, a validation run on the free Yahoo dataset reproduces the study's qualitative findings: SJM is the only candidate cointegrated with KC1 at the 5% level, the strategy compresses volatility to roughly half of the KC1 benchmark's, and performance remains highly sensitive to the threshold configuration.
 
