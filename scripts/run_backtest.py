@@ -5,10 +5,11 @@ Usage:
 
 Steps:
     1. Load close prices (Yahoo CSV or Bloomberg Excel) and log-transform.
-    2. ADF + Engle-Granger screening on the first train window only.
-    3. Expanding-window walk-forward: every fold re-calibrates thresholds,
-       mean-reversion speed, expected returns and covariances on its train
-       window, then trades the next test window out-of-sample.
+    2. ADF + Engle-Granger screening on the first calibration window only.
+    3. Rolling-window walk-forward: every fold re-calibrates thresholds,
+       mean-reversion speed, expected returns and covariances on its own
+       fixed-length calibration window, then trades the next test window
+       out-of-sample.
     4. Performance report vs. buy-and-hold benchmarks over the stitched
        test folds, plus per-fold and trade-level diagnostics.
 """
@@ -77,21 +78,21 @@ def main() -> None:
     log_prices = data.to_log_prices(prices)
     print(f"Loaded {prices.shape[0]} rows x {prices.shape[1]} assets")
 
-    # 2. Screening on the first train window only (no look-ahead)
-    log_screen = data.screening_window(log_prices, wf_cfg["min_train_years"])
+    # 2. Screening on the first calibration window only (no look-ahead)
+    log_screen = data.screening_window(log_prices, wf_cfg["calibration_years"])
     exclude = set(cfg["universe"]["exclude"]) | {anchor}
     adf_results = stat_tests.adf_screen(log_screen, exclude=exclude)
     eg_results = stat_tests.engle_granger_screen(log_screen, anchor, exclude=exclude)
-    print(f"\n=== Screening on the first train window "
+    print(f"\n=== Screening on the first calibration window "
           f"({log_screen.index[0].date()} -> {log_screen.index[-1].date()}) ===")
     print(stat_tests.summary_table(log_screen, anchor, adf_results, eg_results)
           .head(6).round(4).to_string())
 
     # 3. Walk-forward validation
-    print("\n=== Expanding-window walk-forward ===")
+    print("\n=== Rolling-window walk-forward ===")
     result = walk_forward.run_walk_forward(
         log_prices, equities, anchor, features,
-        min_train_years=wf_cfg["min_train_years"],
+        calibration_years=wf_cfg["calibration_years"],
         test_months=wf_cfg["test_months"],
         embargo_days=wf_cfg["embargo_days"],
         window=cfg["signals"]["zscore_window"],

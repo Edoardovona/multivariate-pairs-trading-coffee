@@ -62,17 +62,33 @@ def run_strategy(
     All prices are log-prices; position weights are fractions of the
     portfolio, so the daily PnL is expressed in return space.
     """
+    # Numpy views of everything the daily loop touches
+    prices = {a: log_prices[a].to_numpy() for a in [anchor, *equities]}
     zscores = {
-        stock: compute_zscore(log_prices[stock] - log_prices[anchor], window)
-        for stock in equities
+        s: compute_zscore(log_prices[s] - log_prices[anchor], window).to_numpy()
+        for s in equities
     }
+    betas_path = {s: rolling_betas[s].to_numpy() for s in equities}
 
-    pnl = pd.Series(0.0, index=log_prices.index)
+    pnl = np.zeros(len(log_prices))
     positions = {s: 0.0 for s in equities}      # signed equity-leg weight
     active_betas = {s: 0.0 for s in equities}   # beta locked at entry
     entry_day = {s: 0 for s in equities}
     entry_dir = {s: 0 for s in equities}
     trades: list[dict] = []
+
+    def close_position(stock: str, t: int) -> None:
+        exit_volume = abs(positions[stock]) * (1 + abs(active_betas[stock]))
+        pnl[t] -= exit_volume * transaction_cost
+        trades.append(
+            {
+                "stock": stock,
+                "direction": entry_dir[stock],
+                "pnl": pnl[entry_day[stock] : t + 1].sum(),
+                "holding_days": t - entry_day[stock],
+            }
+        )
+        positions[stock] = 0.0
 
     start_idx = log_prices.index.get_loc(split_date)
     end_idx = (
@@ -82,42 +98,29 @@ def run_strategy(
     )
 
     for t in range(start_idx, end_idx):
-        daily_pnl = 0.0
-
         # 1. Mark-to-market of open positions (t-1 -> t)
+        ret_anchor = prices[anchor][t] - prices[anchor][t - 1]
         for stock in equities:
             if positions[stock] != 0:
-                ret_equity = log_prices[stock].iloc[t] - log_prices[stock].iloc[t - 1]
-                ret_anchor = log_prices[anchor].iloc[t] - log_prices[anchor].iloc[t - 1]
+                ret_equity = prices[stock][t] - prices[stock][t - 1]
                 w_equity = positions[stock]
                 w_anchor = -w_equity * active_betas[stock]
-                daily_pnl += w_equity * ret_equity + w_anchor * ret_anchor
-        pnl.iloc[t] = daily_pnl
+                pnl[t] += w_equity * ret_equity + w_anchor * ret_anchor
 
         # 2. Exits: z-score reverted inside the close band
         for stock in equities:
             if positions[stock] != 0:
-                z = zscores[stock].iloc[t]
+                z = zscores[stock][t]
                 if (positions[stock] > 0 and z > -close_threshold) or (
                     positions[stock] < 0 and z < close_threshold
                 ):
-                    exit_volume = abs(positions[stock]) * (1 + abs(active_betas[stock]))
-                    pnl.iloc[t] -= exit_volume * transaction_cost
-                    trades.append(
-                        {
-                            "stock": stock,
-                            "direction": entry_dir[stock],
-                            "pnl": pnl.iloc[entry_day[stock] : t + 1].sum(),
-                            "holding_days": t - entry_day[stock],
-                        }
-                    )
-                    positions[stock] = 0.0
+                    close_position(stock, t)
 
         # 3. Entries: z-score breached the open band
         triggered = {}
         for stock in equities:
             if positions[stock] == 0.0:
-                z = zscores[stock].iloc[t]
+                z = zscores[stock][t]
                 if z > open_threshold:
                     triggered[stock] = -1
                 elif z < -open_threshold:
@@ -133,7 +136,7 @@ def run_strategy(
                 allocations = optimize_allocations(
                     triggered,
                     available_capital,
-                    rolling_betas.iloc[t],
+                    {s: betas_path[s][t] for s in triggered},
                     covariances,
                     time_to_mean,
                     avg_return_anchor,
@@ -145,29 +148,18 @@ def run_strategy(
                     weight = allocations.get(stock, 0.0)
                     if weight > 0:
                         positions[stock] = weight * direction
-                        active_betas[stock] = rolling_betas.iloc[t][stock]
+                        active_betas[stock] = betas_path[stock][t]
                         entry_volume = weight * (1 + abs(active_betas[stock]))
-                        pnl.iloc[t] -= entry_volume * transaction_cost
+                        pnl[t] -= entry_volume * transaction_cost
                         entry_day[stock] = t
                         entry_dir[stock] = direction
 
     # Force-close whatever is still open on the final day (fold boundary)
-    last_t = end_idx - 1
     for stock in equities:
         if positions[stock] != 0:
-            exit_volume = abs(positions[stock]) * (1 + abs(active_betas[stock]))
-            pnl.iloc[last_t] -= exit_volume * transaction_cost
-            trades.append(
-                {
-                    "stock": stock,
-                    "direction": entry_dir[stock],
-                    "pnl": pnl.iloc[entry_day[stock] : last_t + 1].sum(),
-                    "holding_days": last_t - entry_day[stock],
-                }
-            )
-            positions[stock] = 0.0
+            close_position(stock, end_idx - 1)
 
-    pnl_oos = pnl.iloc[start_idx:end_idx]
+    pnl_oos = pd.Series(pnl[start_idx:end_idx], index=log_prices.index[start_idx:end_idx])
     return BacktestResult(
         pnl=pnl_oos,
         sharpe=sharpe_ratio(pnl_oos, risk_free_rate=risk_free_rate),

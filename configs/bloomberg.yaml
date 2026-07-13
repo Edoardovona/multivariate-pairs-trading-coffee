@@ -20,9 +20,9 @@ universe:
             WEST, BROS, BRCC, JDEP, LKNCY, REBN, THCH]
 
 walk_forward:
-  min_train_years: 4            # first (expanding) train window
+  calibration_years: 4          # rolling (fixed-length) calibration window
   test_months: 12               # length of each out-of-sample fold
-  embargo_days: 21              # gap between train end and test start
+  embargo_days: 21              # gap between calibration end and test start
 
 signals:
   zscore_window: 22             # ~1 trading month

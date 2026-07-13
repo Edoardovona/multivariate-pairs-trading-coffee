@@ -1,21 +1,27 @@
-"""Expanding-window walk-forward validation.
+"""Rolling-window walk-forward validation.
 
-Instead of a single chronological train/test split — which calibrates the
-thresholds once, on one market regime, and judges them on another — the
-sample is swept by expanding folds:
+The sample is swept by fixed-length calibration windows, each followed by
+an out-of-sample test window:
 
-    fold 1:  train [0 ....... T1) -> embargo -> test [T1 .. T2)
-    fold 2:  train [0 ............. T2) -> embargo -> test [T2 .. T3)
+    fold 1:  calibrate [T0 .... T1) -> embargo -> test [T1 .. T2)
+    fold 2:       calibrate [T0+s .... T2) -> embargo -> test [T2 .. T3)
     ...
 
-Every fold re-calibrates the signal thresholds, the mean-reversion speed,
-the expected returns and the pair covariances on its own (growing) train
-window, then trades the following test window out-of-sample. The stitched
-test-fold PnL is the only performance ever reported.
+A *rolling* (fixed-length) calibration window is used rather than an
+expanding one: the coffee sample splits into structurally different
+regimes (range-bound 2016-2019, supply-shock trends from 2021 onwards),
+and an expanding window would let stale early-regime threshold economics
+dominate every later calibration — the exact regime-mismatch failure this
+project diagnosed in the original single-split study. Rolling keeps the
+estimation sample representative of current dynamics and its size constant
+across folds; the cost is fewer observations per calibration, mitigated by
+selecting the plateau of the threshold grid (median of the top decile)
+instead of the argmax cell.
 
-To reduce selection bias in the per-fold grid search, thresholds are taken
-as the median of the top decile of the grid (the plateau) rather than the
-single argmax cell.
+Every fold re-estimates the signal thresholds, the mean-reversion speed,
+the expected returns and the pair covariances on its own calibration
+window, then trades the following test window out-of-sample. Only the
+stitched test-fold PnL is ever reported.
 """
 
 from __future__ import annotations
@@ -47,57 +53,58 @@ class WalkForwardResult:
 
 def walk_forward_folds(
     index: pd.DatetimeIndex,
-    min_train_size: int,
+    calibration_size: int,
     test_size: int,
     embargo: int = 0,
     min_test_size: int = 60,
 ) -> list[tuple[pd.DatetimeIndex, pd.DatetimeIndex]]:
-    """Build expanding (anchored) train/test folds over a trading calendar.
+    """Rolling calibration/test folds over a trading calendar.
 
     Parameters
     ----------
     index:
         Full trading-day index.
-    min_train_size:
-        Trading days in the first train window; every later fold's train
-        window is the entire history up to its test start (expanding).
+    calibration_size:
+        Trading days per calibration window; the window keeps this fixed
+        length and slides forward with each fold, dropping the oldest data.
     test_size:
         Trading days per test window. Folds step forward by this amount,
         so test windows are contiguous and non-overlapping.
     embargo:
-        Trading days skipped between train end and test start, so that
-        rolling statistics computed at the start of the test window do not
-        lean on the very last training days.
+        Trading days skipped between calibration end and test start, so
+        rolling statistics at the start of the test window do not lean on
+        the very last calibration days.
     min_test_size:
         Discard a final stub fold shorter than this.
     """
     folds = []
-    start = min_train_size
+    start = calibration_size
     while start + embargo < len(index):
-        train = index[:start]
+        calibration = index[start - calibration_size : start]
         test = index[start + embargo : start + test_size]
         if len(test) >= min_test_size:
-            folds.append((train, test))
+            folds.append((calibration, test))
         start += test_size
     return folds
 
 
 def calibrate_thresholds(
-    log_train: pd.DataFrame,
+    log_calibration: pd.DataFrame,
     equities: list[str],
     anchor: str,
     window: int = 22,
     risk_free_rate: float = 0.04,
     top_fraction: float = 0.1,
 ) -> tuple[float, float]:
-    """Grid-search the thresholds on the train window, then pick the plateau.
+    """Grid-search the thresholds, then pick the plateau.
 
     Returns the median (open, close) of the top ``top_fraction`` of grid
     cells by average Sharpe. Using the plateau centre instead of the argmax
     cell reduces the selection bias of running one grid search per fold.
     """
     grid, _ = signals.grid_search_thresholds(
-        log_train, equities, anchor, window=window, risk_free_rate=risk_free_rate
+        log_calibration, equities, anchor, window=window,
+        risk_free_rate=risk_free_rate,
     )
     top = grid.head(max(1, int(len(grid) * top_fraction)))
     open_th = round(float(top["open"].median()), 1)
@@ -113,7 +120,7 @@ def run_walk_forward(
     equities: list[str],
     anchor: str,
     features: list[str],
-    min_train_years: float = 4.0,
+    calibration_years: float = 4.0,
     test_months: int = 12,
     embargo_days: int = 21,
     window: int = 22,
@@ -124,9 +131,9 @@ def run_walk_forward(
     solver: str = "auto",
     verbose: bool = True,
 ) -> WalkForwardResult:
-    """Run the full walk-forward evaluation.
+    """Run the full rolling walk-forward evaluation.
 
-    Per fold, estimated on the train window only: signal thresholds
+    Per fold, estimated on the calibration window only: signal thresholds
     (plateau of the grid search), mean-reversion speed, average returns
     and pair covariance matrices. The rolling betas are computed once —
     they only ever use the trailing ``rolling_beta_window`` days, so they
@@ -134,7 +141,7 @@ def run_walk_forward(
     """
     folds = walk_forward_folds(
         log_prices.index,
-        min_train_size=int(min_train_years * TRADING_DAYS_PER_YEAR),
+        calibration_size=int(calibration_years * TRADING_DAYS_PER_YEAR),
         test_size=test_months * TRADING_DAYS_PER_MONTH,
         embargo=embargo_days,
     )
@@ -145,32 +152,25 @@ def run_walk_forward(
         log_prices, equities, features, anchor, window=rolling_beta_window
     )
 
-    segments: list[pd.Series] = []
-    records: list[dict] = []
-    all_trades: list[dict] = []
-
-    for i, (train_idx, test_idx) in enumerate(folds, start=1):
-        log_train = log_prices.loc[train_idx]
+    segments, records, all_trades = [], [], []
+    for i, (cal_idx, test_idx) in enumerate(folds, start=1):
+        log_cal = log_prices.loc[cal_idx]
 
         open_th, close_th = calibrate_thresholds(
-            log_train, equities, anchor, window=window,
+            log_cal, equities, anchor, window=window,
             risk_free_rate=risk_free_rate,
         )
         _, residuals = hedging.estimate_static_betas(
-            log_train, equities, features, anchor
+            log_cal, equities, features, anchor
         )
         covariances = hedging.pair_covariances(
-            log_train[anchor].diff().dropna(),
-            residuals.diff().dropna(),
-            equities,
+            log_cal[anchor].diff().dropna(), residuals.diff().dropna(), equities
         )
         time_to_mean = signals.compute_time_to_mean(
-            log_train, equities, anchor, open_th, close_th, window=window
+            log_cal, equities, anchor, open_th, close_th, window=window
         )
-        avg_ret_anchor = log_train[anchor].diff().dropna().mean()
-        avg_ret_equity = {
-            s: log_train[s].diff().dropna().mean() for s in equities
-        }
+        avg_ret_anchor = log_cal[anchor].diff().dropna().mean()
+        avg_ret_equity = {s: log_cal[s].diff().dropna().mean() for s in equities}
 
         result = backtest.run_strategy(
             log_prices, equities, anchor,
@@ -189,7 +189,7 @@ def run_walk_forward(
         records.append(
             {
                 "fold": i,
-                "train_start": train_idx[0].date(),
+                "cal_start": cal_idx[0].date(),
                 "test_start": test_idx[0].date(),
                 "test_end": test_idx[-1].date(),
                 "open_th": open_th,
@@ -201,7 +201,7 @@ def run_walk_forward(
         )
         if verbose:
             print(
-                f"fold {i}: train {train_idx[0].date()} -> {train_idx[-1].date()}"
+                f"fold {i}: calibrate {cal_idx[0].date()} -> {cal_idx[-1].date()}"
                 f" | test {test_idx[0].date()} -> {test_idx[-1].date()}"
                 f" | thresholds +/-{open_th}/+/-{close_th}"
                 f" | {len(result.trades)} trades | Sharpe {result.sharpe:.3f}"

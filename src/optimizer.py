@@ -42,7 +42,7 @@ def _flip_off_diagonal(cov: pd.DataFrame) -> np.ndarray:
 def optimize_allocations(
     triggered_signals: dict[str, int],
     available_capital: float,
-    betas: pd.Series,
+    betas: dict[str, float] | pd.Series,
     covariances: dict[str, pd.DataFrame],
     time_to_mean: dict[str, float],
     avg_return_anchor: float,

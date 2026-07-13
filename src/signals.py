@@ -19,6 +19,30 @@ def compute_zscore(spread: pd.Series, window: int = 22) -> pd.Series:
     return (spread - rolling_mean) / rolling_std
 
 
+def _position_path(
+    zscore: np.ndarray, open_threshold: float, close_threshold: float
+) -> np.ndarray:
+    """Signed position (+1/0/-1) held at the close of each day.
+
+    Opens short (long) when the z-score exceeds +open_threshold (falls
+    below -open_threshold) and closes when it reverts inside the close band.
+    """
+    positions = np.zeros(len(zscore))
+    position = 0
+    for t, z in enumerate(zscore):
+        if position == 0:
+            if z > open_threshold:
+                position = -1
+            elif z < -open_threshold:
+                position = 1
+        elif position == 1 and z > -close_threshold:
+            position = 0
+        elif position == -1 and z < close_threshold:
+            position = 0
+        positions[t] = position
+    return positions
+
+
 def threshold_backtest(
     spread: pd.Series,
     open_threshold: float,
@@ -28,32 +52,16 @@ def threshold_backtest(
 ) -> float:
     """Sharpe ratio of a single-spread threshold strategy.
 
-    Opens short (long) when the z-score exceeds +open_threshold
-    (falls below -open_threshold) and closes when it reverts inside the
-    close band. Used only for the in-sample grid search; the full
-    out-of-sample engine lives in :mod:`src.backtest`.
+    Used only for the calibration grid search; the full out-of-sample
+    engine lives in :mod:`src.backtest`. The day-t spread move is booked
+    with the position carried from t-1 — booking it against the position
+    updated on the day-t signal would charge every entry with the very
+    move that triggered it.
     """
     zscore = compute_zscore(spread, window).dropna()
-    spread = spread.loc[zscore.index]
-
-    position = 0
-    returns = []
-    for t in range(1, len(zscore)):
-        # Book the day-t move with the position carried from t-1. Updating
-        # the position first would book the very move that triggered the
-        # signal (a guaranteed adverse move on every entry day).
-        returns.append(position * (spread.iloc[t] - spread.iloc[t - 1]))
-
-        if position == 0:
-            if zscore.iloc[t] > open_threshold:
-                position = -1
-            elif zscore.iloc[t] < -open_threshold:
-                position = 1
-        elif position == 1 and zscore.iloc[t] > -close_threshold:
-            position = 0
-        elif position == -1 and zscore.iloc[t] < close_threshold:
-            position = 0
-
+    values = spread.loc[zscore.index].to_numpy()
+    positions = _position_path(zscore.to_numpy(), open_threshold, close_threshold)
+    returns = positions[:-1] * np.diff(values)
     return sharpe_ratio(pd.Series(returns), risk_free_rate=risk_free_rate)
 
 
@@ -119,17 +127,15 @@ def compute_time_to_mean(
     time_to_mean: dict[str, float] = {}
     for stock in equities:
         spread = log_prices[stock] - log_prices[anchor]
-        zscore = compute_zscore(spread, window).dropna()
+        zscore = compute_zscore(spread, window).dropna().abs().to_numpy()
         holding_periods = []
-        in_trade = False
-        entry_t = 0
-        for t in range(len(zscore)):
-            if not in_trade:
-                if abs(zscore.iloc[t]) > open_threshold:
-                    in_trade = True
+        entry_t = -1
+        for t, z in enumerate(zscore):
+            if entry_t < 0:
+                if z > open_threshold:
                     entry_t = t
-            elif abs(zscore.iloc[t]) < close_threshold:
+            elif z < close_threshold:
                 holding_periods.append(t - entry_t)
-                in_trade = False
+                entry_t = -1
         time_to_mean[stock] = float(np.mean(holding_periods)) if holding_periods else 1.0
     return time_to_mean

@@ -12,7 +12,7 @@ This began as the final project of the *Commodities Markets and Models* course (
 
 The repository is the course project refactored into a reproducible research package, plus a few extensions added afterwards:
 
-- **expanding-window walk-forward validation** replacing the report's single 70/30 split (thresholds are re-calibrated per fold and only ever judged on unseen data);
+- **rolling-window walk-forward validation** replacing the report's single 70/30 split (every parameter is re-estimated per fold on a fixed-length calibration window and only ever judged on unseen data);
 - a modular `src/` package with unit tests, an open-source solver fallback next to Gurobi, and a free-data reproduction path;
 - a signal-timing bug found and fixed during the refactor (entries were booking the same-day move that triggered them — see the commit history).
 
@@ -24,33 +24,33 @@ The repository is the course project refactored into a reproducible research pac
 
 ## Results at a glance
 
-**Walk-forward validation** on the Bloomberg dataset: 7 expanding folds, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. Every number below comes from test windows the calibration never saw.
+**Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. Every number below comes from test windows the calibration never saw.
 
 | Metric | MPTS walk-forward | B&H KC1 | B&H EW basket |
 |---|---|---|---|
-| Sharpe ratio | 0.06 | 0.53 | −0.03 |
-| Annualized return | 3.6% | 18.5% | 0.7% |
-| Annualized volatility | **17.0%** | 37.7% | 22.8% |
+| Sharpe ratio | −0.04 | 0.53 | −0.03 |
+| Annualized return | 1.8% | 18.5% | 0.7% |
+| Annualized volatility | **17.3%** | 37.7% | 22.8% |
 | Max drawdown | **−33.1%** | −44.3% | −46.1% |
-| Trades | 204 (60% winners) | — | — |
+| Trades | 236 (52% winners) | — | — |
 
 ![Walk-forward equity curve vs benchmarks](reports/figures/walk_forward_equity.png)
 
-Per-fold diagnostics (thresholds re-calibrated on each expanding train window — the plateau of the grid search, not the argmax):
+Per-fold diagnostics (thresholds re-calibrated on each rolling calibration window — the plateau of the grid search, not the argmax):
 
 | Fold | Test window | Thresholds (open/close) | Trades | Sharpe |
 |---|---|---|---|---|
 | 1 | Jan 2020 – Dec 2020 | ±2.1 / ±1.0 | 39 | **+1.18** |
-| 2 | Jan 2021 – Nov 2021 | ±2.1 / ±0.7 | 35 | −0.41 |
-| 3 | Dec 2021 – Nov 2022 | ±2.1 / ±0.7 | 32 | +0.31 |
-| 4 | Dec 2022 – Nov 2023 | ±2.0 / ±0.8 | 35 | **+1.02** |
-| 5 | Dec 2023 – Oct 2024 | ±2.1 / ±0.8 | 27 | −1.00 |
-| 6 | Nov 2024 – Oct 2025 | ±2.1 / ±0.6 | 25 | +0.12 |
-| 7 | Nov 2025 – Feb 2026 (short) | ±2.0 / ±0.9 | 11 | −2.80 |
+| 2 | Jan 2021 – Nov 2021 | ±2.2 / ±0.7 | 29 | −1.55 |
+| 3 | Dec 2021 – Nov 2022 | ±2.2 / ±0.6 | 27 | −0.71 |
+| 4 | Dec 2022 – Nov 2023 | ±2.1 / ±0.7 | 32 | **+0.84** |
+| 5 | Dec 2023 – Oct 2024 | ±1.9 / ±0.9 | 38 | −1.00 |
+| 6 | Nov 2024 – Oct 2025 | ±1.7 / ±0.6 | 44 | +0.13 |
+| 7 | Nov 2025 – Feb 2026 (short) | ±1.2 / ±1.0 | 27 | −2.33 |
 
-Median fold Sharpe **0.12**, range **[−2.80, +1.18]**.
+Median fold Sharpe **−0.71**, range **[−2.33, +1.18]**.
 
-**The honest reading.** The strategy is roughly flat-to-mildly-positive across six years while compressing volatility to less than half of the KC1 benchmark's — the market-neutral machinery (β-hedge, variance penalty, optimizer) does exactly what it is designed to do. But the fold-level Sharpe flips sign repeatedly: the mean-reversion edge is regime-dependent and, over this sample, does not survive as a standalone alpha. Given [the statistical limitation below](#the-main-statistical-limitation), that is the expected outcome — and precisely the kind of conclusion a single favorable split can hide. The original single-split study is preserved in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
+**The honest reading.** The rolling calibration does what it is meant to do — the thresholds visibly adapt as the volatile post-2021 regime enters the estimation window (entry bands tighten from ±2.1 to ±1.2 by the final fold) — and the market-neutral machinery keeps volatility below half of the KC1 benchmark's with a smaller drawdown. What the adaptation cannot do is manufacture an edge: fold-level Sharpe flips sign repeatedly and the aggregate is indistinguishable from zero. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded profitably where cointegration is absent — and it is precisely the conclusion a single favorable split can hide. The original single-split study is preserved in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
 
 ---
 
@@ -58,8 +58,8 @@ Median fold Sharpe **0.12**, range **[−2.80, +1.18]**.
 
 **Pipeline** (every estimate is computed on data strictly prior to the window it is used in):
 
-1. **Universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → ADF unit-root test (require I(1)) → Engle-Granger cointegration against KC1 → select the 4 most cointegrated names. Screening uses only the first train window.
-2. **Walk-forward validation** — expanding (anchored) folds: the first 4 years train fold 1, which trades the following 12 months out-of-sample; each subsequent fold's train window grows by one test window, with a 1-month embargo between train and test. Per fold, re-estimated on the train window only: signal thresholds, mean-reversion speed, expected returns and pair covariances. Only stitched test-fold performance is ever reported.
+1. **Universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → ADF unit-root test (require I(1)) → Engle-Granger cointegration against KC1 → select the 4 most cointegrated names. Screening uses only the first calibration window.
+2. **Rolling walk-forward validation** — each fold estimates all parameters on a fixed-length 4-year calibration window, trades the following 12 months out-of-sample (1-month embargo in between, forced liquidation at fold boundaries), then the window slides forward by one test window, dropping the oldest data. *Why rolling rather than expanding:* the sample splits into structurally different regimes (range-bound 2016–2019, supply-shock trends from 2021 on); an expanding window would let stale early-regime threshold economics dominate every later calibration — the regime-mismatch failure the original study diagnosed. Rolling keeps the estimation sample representative of current dynamics and its size constant across folds; the trade-off is fewer observations per calibration (noisier estimates), mitigated by the plateau selection in step 3. Only stitched test-fold performance is ever reported.
 3. **Signals** — 22-day rolling z-score of each log-spread; open when |z| breaches the entry band, close on reversion. Thresholds come from a per-fold grid search (open ∈ [1, 2.5), close ∈ [0.5, 2.0), close < open enforced) maximizing the average Sharpe across the basket; to curb per-fold selection bias, the strategy uses the **median of the top decile of the grid** (the plateau) rather than the argmax cell.
 4. **Hedging** — each equity's coffee sensitivity β<sub>i,KC1</sub> is isolated via multivariate OLS on KC1 **and** the consumer-staples ETF (XLP), estimated on a 252-day rolling window (causal by construction) and locked at trade entry.
 5. **Position sizing** — every day with triggered signals, solve:
@@ -101,7 +101,7 @@ multivariate-pairs-coffee/
 │   ├── hedging.py              # static & rolling multivariate betas, covariances
 │   ├── optimizer.py            # bi-objective allocation (Gurobi + SciPy backends)
 │   ├── backtest.py             # daily simulation engine, trade log, benchmarks
-│   ├── walk_forward.py         # expanding folds, plateau calibration, WF runner
+│   ├── walk_forward.py         # rolling folds, plateau calibration, WF runner
 │   └── metrics.py              # Sharpe, drawdown, trade-level statistics
 ├── tests/                      # pytest unit tests (no license, no network needed)
 ├── reports/

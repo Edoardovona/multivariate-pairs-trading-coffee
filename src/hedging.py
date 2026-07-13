@@ -56,24 +56,26 @@ def rolling_betas(
 ) -> pd.DataFrame:
     """One-year rolling OLS betas w.r.t. the anchor, used in the backtest.
 
-    The beta active at entry is locked for the life of each position so
-    that the hedge reflects only information available at trade time.
+    Computed in closed form from rolling variances/covariances (normal
+    equations of the two-regressor OLS), which is vectorised and orders of
+    magnitude faster than per-day statsmodels fits. Windows end at t-1, so
+    the beta used on day t only reflects information available at trade
+    time; the beta active at entry is locked for the life of each position.
     """
+    proxy = next(f for f in features if f != anchor)
+    x1, x2 = log_prices[anchor], log_prices[proxy]
+    var1 = x1.rolling(window).var()
+    var2 = x2.rolling(window).var()
+    cov12 = x1.rolling(window).cov(x2)
+    determinant = var1 * var2 - cov12**2
+
     betas = pd.DataFrame(index=log_prices.index, columns=equities, dtype=float)
-    for t in range(window, len(log_prices)):
-        for stock in equities:
-            # Subset before dropna so unrelated assets with missing history
-            # cannot empty the estimation window.
-            window_data = (
-                log_prices[[stock] + features].iloc[t - window : t].dropna()
-            )
-            if len(window_data) < window // 2:
-                continue
-            model = sm.OLS(
-                window_data[stock], sm.add_constant(window_data[features])
-            ).fit()
-            betas.iat[t, betas.columns.get_loc(stock)] = model.params[anchor]
-    return betas.ffill().fillna(0.0)
+    for stock in equities:
+        y = log_prices[stock]
+        cov1y = x1.rolling(window).cov(y)
+        cov2y = x2.rolling(window).cov(y)
+        betas[stock] = (var2 * cov1y - cov12 * cov2y) / determinant
+    return betas.shift(1).ffill().fillna(0.0)
 
 
 def pair_covariances(
