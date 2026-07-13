@@ -12,8 +12,8 @@ data:
   end: "2026-02-12"
 
 universe:
-  anchor: KC1                   # Arabica front-month future
-  sector_proxy: XLP             # consumer staples sector control
+  anchor: KC1                     # Arabica front-month future
+  sector_proxy: XLP               # consumer staples sector control
   equities: [SJM, KO, MDLZ, JVA]  # basket selected via in-sample screening
   # Excluded from screening: Robusta, sector proxies and late-listed equities
   exclude: [DF1, COFF, DBA, MOO, XLP, PBJ, DBC,
@@ -33,7 +33,7 @@ strategy:
   transaction_cost: 0.001       # 10 bps per leg
   risk_free_rate: 0.04
   rolling_beta_window: 252
-  solver: auto                  # auto | gurobi | scipy
+  solver: gurobi                # auto | gurobi | scipy (original study used Gurobi)
 
 backtest:
   initial_capital: 10000

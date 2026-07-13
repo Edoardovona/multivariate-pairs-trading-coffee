@@ -2,7 +2,7 @@
 #
 # The reported results were produced with a Bloomberg dataset (see
 # data/README.md). This file points to the Yahoo Finance CSV produced by
-# scripts/download_data.py so the pipeline is reproducible with free data.
+# scripts/download_data.py so the pipeline is completely reproducible.
 
 data:
   path: data/raw/prices.csv     # or a Bloomberg Excel export (.xlsx)

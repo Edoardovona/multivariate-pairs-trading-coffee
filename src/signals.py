@@ -39,6 +39,11 @@ def threshold_backtest(
     position = 0
     returns = []
     for t in range(1, len(zscore)):
+        # Book the day-t move with the position carried from t-1. Updating
+        # the position first would book the very move that triggered the
+        # signal (a guaranteed adverse move on every entry day).
+        returns.append(position * (spread.iloc[t] - spread.iloc[t - 1]))
+
         if position == 0:
             if zscore.iloc[t] > open_threshold:
                 position = -1
@@ -48,7 +53,6 @@ def threshold_backtest(
             position = 0
         elif position == -1 and zscore.iloc[t] < close_threshold:
             position = 0
-        returns.append(position * (spread.iloc[t] - spread.iloc[t - 1]))
 
     return sharpe_ratio(pd.Series(returns), risk_free_rate=risk_free_rate)
 
