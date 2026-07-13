@@ -1,0 +1,30 @@
+# Data: raw market data is never committed (Bloomberg data is proprietary;
+# Yahoo data is re-downloadable via scripts/download_data.py)
+data/raw/*
+!data/raw/.gitkeep
+
+# Secrets and environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Generated outputs
+reports/equity_curves.csv
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Gurobi
+gurobi.log

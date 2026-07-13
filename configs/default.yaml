@@ -1,0 +1,37 @@
+# Default configuration for the multivariate pair trading pipeline.
+#
+# The reported results were produced with a Bloomberg dataset (see
+# data/README.md). This file points to the Yahoo Finance CSV produced by
+# scripts/download_data.py so the pipeline is reproducible with free data.
+
+data:
+  path: data/raw/prices.csv     # or a Bloomberg Excel export (.xlsx)
+  start: "2016-02-12"
+  end: "2026-02-12"
+
+universe:
+  anchor: KC1                   # Arabica front-month future
+  sector_proxy: XLP             # consumer staples sector control
+  equities: [SJM, KO, MDLZ, JVA]  # basket selected via in-sample screening
+  # Assets excluded from screening: proxies and late-listed equities
+  exclude: [DF1, COFF, DBA, MOO, XLP, PBJ, DBC,
+            WEST, BROS, BRCC, JDEP, LKNCY, REBN, THCH]
+
+split:
+  ratio: 0.7                    # 70% in-sample / 30% out-of-sample
+
+signals:
+  zscore_window: 22             # ~1 trading month
+  threshold_mode: grid          # "grid" (in-sample optimized) or "manual"
+  manual_open: 1.0
+  manual_close: 0.6
+
+strategy:
+  risk_aversion: 1.0            # lambda in the bi-objective optimization
+  transaction_cost: 0.001       # 10 bps per leg
+  risk_free_rate: 0.04
+  rolling_beta_window: 252
+  solver: auto                  # auto | gurobi | scipy
+
+backtest:
+  initial_capital: 10000
