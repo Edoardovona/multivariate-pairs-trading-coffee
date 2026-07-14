@@ -1,28 +1,18 @@
 # Multivariate Pairs Trading on the Coffee Market
 
-**Market-neutral statistical arbitrage between Arabica coffee futures (KC1) and a basket of coffee value-chain equities, with convex-optimized position sizing and a beta-neutrality constraint.**
+A Python implementation and extension of:
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-pytest-brightgreen)
+> Yang, H., & Malik, A. (2024). Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform. > > > > International Journal of Financial Studies, 12(3), 77.
 
-## Project context
+This repository transposes the multivariate pair-trading framework above from its native cryptocurrency/fiat setting to the coffee market: a basket of spreads between the Arabica front-month future (KC1) and coffee value-chain equities, on ten years of daily Bloomberg data (2016–2026). The transposition is not a mechanical one — where crypto/fiat pairs are near-perfectly cointegrated by construction, the long-run link between a soft commodity and listed equities must be established statistically, and much of the project revolves around what happens when that foundation is weak.
 
-This began as the final project of the *Commodities Markets and Models* course (MSc Financial Engineering, ESILV Paris, March 2026). The assignment: each student was **assigned a commodity — coffee, in my case — and a reference paper to replicate** on it. Mine was the *Optimal Trading Technique* of [Yang & Malik (2024)](https://doi.org/10.3390/ijfs12030077), originally designed for cryptocurrency/fiat pairs, transposed here onto a structurally harder asset class: soft commodities. The original write-up is in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
+Relative to the reference implementation, the pipeline adds a rolling walk-forward validation in place of a single chronological split, plateau-based threshold calibration to limit selection bias, a dual-backend convex optimizer (Gurobi, with a SciPy fallback so the results are reproducible), and an alternative data path via Yahoo Finance.
 
-The repository is the course project refactored into a reproducible research package, plus a few extensions added afterwards:
-
-- **rolling-window walk-forward validation** replacing the report's single 70/30 split (every parameter is re-estimated per fold on a fixed-length calibration window and only ever judged on unseen data);
-- a modular `src/` package with unit tests, an open-source solver fallback next to Gurobi, and a free-data reproduction path;
-- a signal-timing bug found and fixed during the refactor (entries were booking the same-day move that triggered them — see the commit history).
-
-**The strategy:** instead of trading a single spread, monitor a basket of spreads between the Arabica front-month future (KC1) and four coffee value-chain equities (SJM, KO, MDLZ, JVA); each day a bi-objective convex optimizer sizes the triggered positions, balancing expected profit against λ-weighted variance under no-leverage and beta-neutrality constraints.
-
-> **An honest disclaimer up front:** across six years of walk-forward test windows the strategy does not beat a buy-and-hold of the coffee future, and the binding constraint is statistical, not methodological — see [the main limitation](#the-main-statistical-limitation) below. The framework's machinery (optimizer, dynamic hedge, volatility compression) works as designed; the value of the project is the rigor of that diagnosis.
+The project was developed for the *Commodities Markets and Models* course, where each student replicated an assigned paper on an assigned commodity.
 
 ---
 
-## Results at a glance
+## Main Results
 
 **Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. Every number below comes from test windows the calibration never saw.
 
@@ -86,13 +76,13 @@ multivariate-pairs-coffee/
 │   ├── default.yaml            # every parameter of the pipeline (Yahoo data)
 │   └── bloomberg.yaml          # same pipeline on the original Bloomberg export
 ├── data/
-│   ├── README.md               # data sources, schema, Bloomberg disclaimer
-│   └── raw/                    # git-ignored (proprietary / re-downloadable)
+│   ├── README.md               
+│   └── raw/                    # git-ignored 
 ├── notebooks/
 │   ├── 01_statistical_screening.ipynb   # EDA, ADF, Engle-Granger, basket selection
 │   └── 02_backtest_analysis.ipynb       # calibration, backtest, benchmarks
 ├── scripts/
-│   ├── download_data.py        # free Yahoo Finance universe builder
+│   ├── download_data.py        # Yahoo Finance universe builder
 │   └── run_backtest.py         # one-command end-to-end pipeline
 ├── src/
 │   ├── data.py                 # loaders (Bloomberg xlsx / Yahoo csv), screening window
@@ -106,7 +96,7 @@ multivariate-pairs-coffee/
 ├── tests/                      # pytest unit tests (no license, no network needed)
 ├── reports/
 │   ├── Multivariate_Pair_Trading.pdf    # full write-up
-│   └── figures/                # figures from the original Bloomberg run
+│   └── figures/                
 ├── requirements.txt
 └── LICENSE
 ```
@@ -118,8 +108,8 @@ git clone https://github.com/Edoardovona/multivariate-pairs-coffee.git
 cd multivariate-pairs-coffee
 pip install -r requirements.txt
 
-python scripts/download_data.py      # free Yahoo Finance data → data/raw/prices.csv
-python scripts/run_backtest.py       # screening → calibration → backtest → report
+python scripts/download_data.py      # free Yahoo Finance data --> data/raw/prices.csv
+python scripts/run_backtest.py       # screening --> calibration --> backtest 
 ```
 
 With the original Bloomberg export (see [A note on data](#a-note-on-data)):
@@ -135,7 +125,7 @@ Run the tests:
 pytest tests/ -v
 ```
 
-Every parameter (universe, walk-forward fold structure, λ, transaction costs, solver) lives in [`configs/default.yaml`](configs/default.yaml).
+Every parameter (universe, walk-forward fold structure, $\lambda$, transaction costs, solver) lives in [`configs/default.yaml`](configs/default.yaml).
 
 ## A note on data
 
@@ -164,14 +154,9 @@ For reference, a validation run on the free Yahoo dataset reproduces the study's
 - Johansen cointegration on the full basket rather than pairwise tests.
 - Volatility-adaptive thresholds (bands scaled by short- vs long-run spread volatility) to react to regime shifts between fold recalibrations.
 - Broader universe: FX of producer countries (BRL, VND), cross-exchange spreads.
-- Deflated Sharpe ratio / probability of backtest overfitting on the fold results.
 
 ## References
 
 - Yang, H. & Malik, A. (2024). *Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform*. International Journal of Financial Studies, 12(3):77.
 - Silveira, Mattos & Saes (2017). *The Reaction of Coffee Futures Price Volatility to Crop Reports*. Emerging Markets Finance and Trade, 53(10).
 - Geman, H. (2014). *Agricultural Finance: from Crops to Land, Water and Infrastructure*. Wiley.
-
-## Author
-
-**Edoardo Vona** — MSc Financial Engineering, ESILV Paris.

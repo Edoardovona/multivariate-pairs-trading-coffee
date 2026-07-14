@@ -8,7 +8,6 @@ yfinance>=0.2.40
 PyYAML>=6.0
 openpyxl>=3.1
 pytest>=7.4
+gurobipy>=11.0
 
-# Optional: commercial solver used in the original study.
-# The pipeline falls back to SciPy (SLSQP) when Gurobi is unavailable.
-# gurobipy>=11.0
+# Note that the pipeline falls back to SciPy (SLSQP) when Gurobi is unavailable.
