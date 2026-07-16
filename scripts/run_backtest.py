@@ -88,13 +88,22 @@ def main() -> None:
     print(stat_tests.summary_table(log_screen, anchor, adf_results, eg_results)
           .head(6).round(4).to_string())
 
-    # 3. Walk-forward validation
+    # 3. Walk-forward validation. When reselect_basket is on, the ADF +
+    # Engle-Granger screen is re-run on every calibration window and the
+    # basket is re-selected from the whole eligible universe.
+    candidates = (
+        [c for c in log_prices.columns if c not in exclude and c != anchor]
+        if wf_cfg.get("reselect_basket", False)
+        else None
+    )
     print("\n=== Rolling-window walk-forward ===")
     result = walk_forward.run_walk_forward(
         log_prices, equities, anchor, features,
         calibration_years=wf_cfg["calibration_years"],
         test_months=wf_cfg["test_months"],
         embargo_days=wf_cfg["embargo_days"],
+        candidates=candidates,
+        n_pairs=cfg["universe"].get("n_pairs", 4),
         window=cfg["signals"]["zscore_window"],
         risk_aversion=cfg["strategy"]["risk_aversion"],
         transaction_cost=tc,

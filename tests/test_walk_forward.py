@@ -41,3 +41,25 @@ def test_short_final_stub_is_discarded():
     )
     # only 100 days remain after the calibration window -> below min_test_size
     assert folds == []
+
+
+def test_select_basket_prefers_cointegrated_positive_beta():
+    import numpy as np
+    from src.walk_forward import select_basket
+
+    rng = np.random.default_rng(7)
+    n = 600
+    anchor = np.cumsum(rng.normal(0, 0.01, n)) + 5.0
+    idx = pd.bdate_range("2016-01-01", periods=n)
+    log_prices = pd.DataFrame(
+        {
+            "KC1": anchor,
+            "COINT": anchor + rng.normal(0, 0.02, n),        # cointegrated, beta > 0
+            "INVERSE": -anchor + rng.normal(0, 0.02, n) + 12,  # cointegrated, beta < 0
+            "WALK": np.cumsum(rng.normal(0, 0.01, n)) + 3.0,   # independent random walk
+        },
+        index=idx,
+    )
+    basket = select_basket(log_prices, "KC1", ["COINT", "INVERSE", "WALK"], n_pairs=2)
+    assert basket[0] == "COINT"
+    assert "INVERSE" not in basket  # negative hedge ratio discarded

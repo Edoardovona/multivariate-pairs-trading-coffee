@@ -2,11 +2,12 @@
 
 A Python implementation and extension of:
 
-> Yang, H., & Malik, A. (2024). Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform. > > > > International Journal of Financial Studies, 12(3), 77.
+> Yang, H., & Malik, A. (2024). Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform. 
+> International Journal of Financial Studies, 12(3), 77.
 
 This repository transposes the multivariate pair-trading framework above from its native cryptocurrency/fiat setting to the coffee market: a basket of spreads between the Arabica front-month future (KC1) and coffee value-chain equities, on ten years of daily Bloomberg data (2016–2026). The transposition is not a mechanical one — where crypto/fiat pairs are near-perfectly cointegrated by construction, the long-run link between a soft commodity and listed equities must be established statistically, and much of the project revolves around what happens when that foundation is weak.
 
-Relative to the reference implementation, the pipeline adds a rolling walk-forward validation in place of a single chronological split, plateau-based threshold calibration to limit selection bias, a dual-backend convex optimizer (Gurobi, with a SciPy fallback so the results are reproducible), and an alternative data path via Yahoo Finance.
+Relative to the reference implementation, the pipeline adds a rolling walk-forward validation in place of a single chronological split, threshold calibration to limit selection bias, a dual-backend convex optimizer (Gurobi, with a SciPy fallback so the results are reproducible), and an alternative data path via Yahoo Finance.
 
 The project was developed for the *Commodities Markets and Models* course, where each student replicated an assigned paper on an assigned commodity.
 
@@ -14,33 +15,35 @@ The project was developed for the *Commodities Markets and Models* course, where
 
 ## Main Results
 
-**Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. Every number below comes from test windows the calibration never saw.
+**Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. The equity basket itself is re-selected on every calibration window (ADF + Engle-Granger screen, top-4 positive-hedge-ratio names), so nothing in the pipeline is frozen on information the fold could not have had.
 
 | Metric | MPTS walk-forward | B&H KC1 | B&H EW basket |
 |---|---|---|---|
-| Sharpe ratio | −0.04 | 0.53 | −0.03 |
-| Annualized return | 1.8% | 18.5% | 0.7% |
-| Annualized volatility | **17.3%** | 37.7% | 22.8% |
-| Max drawdown | **−33.1%** | −44.3% | −46.1% |
-| Trades | 236 (52% winners) | — | — |
+| Sharpe ratio | −0.15 | 0.53 | −0.03 |
+| Annualized return | 1.5% | 18.5% | 0.7% |
+| Annualized volatility | **11.5%** | 37.7% | 22.8% |
+| Max drawdown | **−18.8%** | −44.3% | −46.1% |
+| Trades | 167 (61% winners) | — | — |
 
 ![Walk-forward equity curve vs benchmarks](reports/figures/walk_forward_equity.png)
 
-Per-fold diagnostics (thresholds re-calibrated on each rolling calibration window — the plateau of the grid search, not the argmax):
+Per-fold diagnostics (basket and thresholds re-estimated on each rolling calibration window):
 
-| Fold | Test window | Thresholds (open/close) | Trades | Sharpe |
-|---|---|---|---|---|
-| 1 | Jan 2020 – Dec 2020 | ±2.1 / ±1.0 | 39 | **+1.18** |
-| 2 | Jan 2021 – Nov 2021 | ±2.2 / ±0.7 | 29 | −1.55 |
-| 3 | Dec 2021 – Nov 2022 | ±2.2 / ±0.6 | 27 | −0.71 |
-| 4 | Dec 2022 – Nov 2023 | ±2.1 / ±0.7 | 32 | **+0.84** |
-| 5 | Dec 2023 – Oct 2024 | ±1.9 / ±0.9 | 38 | −1.00 |
-| 6 | Nov 2024 – Oct 2025 | ±1.7 / ±0.6 | 44 | +0.13 |
-| 7 | Nov 2025 – Feb 2026 (short) | ±1.2 / ±1.0 | 27 | −2.33 |
+| Fold | Test window | Basket | Thresholds (open/close) | Trades | Sharpe |
+|---|---|---|---|---|---|
+| 1 | Jan 2020 – Dec 2020 | SJM, FARM | ±1.6 / ±0.8 | 26 | **+0.66** |
+| 2 | Jan 2021 – Nov 2021 | JVA, FARM | ±1.7 / ±0.8 | 25 | +0.10 |
+| 3 | Dec 2021 – Nov 2022 | SJM, MCD, NSGRY, KO | ±2.2 / ±0.8 | 27 | −2.75 |
+| 4 | Dec 2022 – Nov 2023 | MDLZ, MCD, KO, SJM | ±2.4 / ±1.1 | 22 | −2.06 |
+| 5 | Dec 2023 – Oct 2024 | KO, NESN, NSGRY, MCD | ±2.3 / ±1.0 | 14 | −1.01 |
+| 6 | Nov 2024 – Oct 2025 | KO, MCD, NESN, MDLZ | ±1.7 / ±0.7 | 44 | **+1.19** |
+| 7 | Nov 2025 – Feb 2026 (short) | JVA, MCD | ±1.3 / ±1.0 | 9 | −3.09 |
 
-Median fold Sharpe **−0.71**, range **[−2.33, +1.18]**.
+Median fold Sharpe **−1.01**, range **[−3.09, +1.19]**.
 
-**The honest reading.** The rolling calibration does what it is meant to do — the thresholds visibly adapt as the volatile post-2021 regime enters the estimation window (entry bands tighten from ±2.1 to ±1.2 by the final fold) — and the market-neutral machinery keeps volatility below half of the KC1 benchmark's with a smaller drawdown. What the adaptation cannot do is manufacture an edge: fold-level Sharpe flips sign repeatedly and the aggregate is indistinguishable from zero. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded profitably where cointegration is absent — and it is precisely the conclusion a single favorable split can hide. The original single-split study is preserved in [`reports/Multivariate_Pair_Trading.pdf`](reports/Multivariate_Pair_Trading.pdf).
+**Reading the fold table.** The *median* fold Sharpe is reported next to the aggregate because with only 7 folds the mean is dominated by outliers (fold 7 is a 3-month stub); the median describes the typical fold, the range describes the dispersion, and a strategy whose fold Sharpe flips sign this often is regime-dependent regardless of the aggregate. Note also how the selected basket rotates — SJM/FARM in the calm regime, the large-cap staples later — and that some folds retain fewer than 4 names because the positive-hedge-ratio and unit-root filters leave fewer eligible candidates.
+
+The walk-forward machinery behaves as designed: baskets and thresholds adapt fold by fold, and risk control is the strongest of any configuration tested (volatility less than a third of the KC1 benchmark's, drawdown less than half). What no amount of adaptation can do is manufacture an edge: the aggregate Sharpe remains slightly negative. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded profitably where cointegration is weak and unstable — and it is precisely the conclusion a single favorable split can hide.
 
 ---
 
@@ -48,9 +51,23 @@ Median fold Sharpe **−0.71**, range **[−2.33, +1.18]**.
 
 **Pipeline** (every estimate is computed on data strictly prior to the window it is used in):
 
-1. **Universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → ADF unit-root test (require I(1)) → Engle-Granger cointegration against KC1 → select the 4 most cointegrated names. Screening uses only the first calibration window.
-2. **Rolling walk-forward validation** — each fold estimates all parameters on a fixed-length 4-year calibration window, trades the following 12 months out-of-sample (1-month embargo in between, forced liquidation at fold boundaries), then the window slides forward by one test window, dropping the oldest data. *Why rolling rather than expanding:* the sample splits into structurally different regimes (range-bound 2016–2019, supply-shock trends from 2021 on); an expanding window would let stale early-regime threshold economics dominate every later calibration — the regime-mismatch failure the original study diagnosed. Rolling keeps the estimation sample representative of current dynamics and its size constant across folds; the trade-off is fewer observations per calibration (noisier estimates), mitigated by the plateau selection in step 3. Only stitched test-fold performance is ever reported.
-3. **Signals** — 22-day rolling z-score of each log-spread; open when |z| breaches the entry band, close on reversion. Thresholds come from a per-fold grid search (open ∈ [1, 2.5), close ∈ [0.5, 2.0), close < open enforced) maximizing the average Sharpe across the basket; to curb per-fold selection bias, the strategy uses the **median of the top decile of the grid** (the plateau) rather than the argmax cell.
+1. **Per-fold universe screening** — daily closes 2016–2026 for KC1, 6 sector ETFs and 17 coffee value-chain equities → log-prices → on *each* calibration window: ADF unit-root test (require $I(1)$) → Engle-Granger cointegration against KC1 → discard candidates with a negative hedge ratio (an inverted long-run relationship is not the co-movement a spread trades) → the top-4 names form that fold's basket. Re-screening per fold is consistent with the rolling philosophy: a basket frozen on one historical window would leak that window's regime into every fold. KDP is excluded outright — its Bloomberg back-history is unadjusted for the $103.75 special dividend of the 2018 Keurig–Dr Pepper merger, so the series is not economically continuous.
+2. **Rolling walk-forward validation** — each fold estimates all parameters on a fixed-length 4-year calibration window, trades the following 12 months out-of-sample (1-month embargo in between, forced liquidation at fold boundaries), then the window slides forward by one test window, dropping the oldest data:
+
+```text
+time ──────────────────────────────────────────────────────────────────▶
+
+fold 1   [======== calibration (4y) ========] e [--- test (12m) ---]
+fold 2        [======== calibration (4y) ========] e [--- test (12m) ---]
+fold 3             [======== calibration (4y) ========] e [--- test (12m) ---]
+   ⋮                                  ⋮
+         e = 1-month embargo · window slides forward by one test length
+         re-estimated per fold: basket, thresholds, expected profits, covariances
+         reported performance: the stitched test windows only
+```
+
+   *Why rolling rather than expanding:* the sample splits into structurally different regimes (range-bound 2016–2019, supply-shock trends from 2021 on); an expanding window would let stale early-regime threshold economics dominate every later calibration — the regime-mismatch failure the original study diagnosed. Rolling keeps the estimation sample representative of current dynamics and its size constant across folds; the trade-off is fewer observations per calibration (noisier estimates), mitigated by the plateau selection in step 3. *Why the embargo:* rolling statistics at the start of a test window (the 22-day $z$-score in particular) would otherwise be computed largely from the last calibration days — information the calibration already consumed; skipping one month removes that overlap at negligible cost (the purging/embargo idea of combinatorial cross-validation). Only stitched test-fold performance is ever reported.
+3. **Signals** — 22-day rolling $z$-score of each log-spread; open when $|z|$ breaches the entry band, close on reversion. Thresholds come from a per-fold grid search (open $\in \[1, 2.5)$, close $\in \[0.5, 2.0)$, close < open enforced) maximizing the average Sharpe across the basket; to curb per-fold selection bias, the strategy uses the **median of the top decile of the grid** (the plateau) rather than the argmax cell.
 4. **Hedging** — each equity's coffee sensitivity β<sub>i,KC1</sub> is isolated via multivariate OLS on KC1 **and** the consumer-staples ETF (XLP), estimated on a 252-day rolling window (causal by construction) and locked at trade entry.
 5. **Position sizing** — every day with triggered signals, solve:
 
@@ -129,11 +146,10 @@ Every parameter (universe, walk-forward fold structure, $\lambda$, transaction c
 
 ## A note on data
 
-The study was conducted on a **Bloomberg** daily dataset (Feb 2016 – Feb 2026; 2,610 rows × 25 assets). Bloomberg data is proprietary and licensed, so the file is **git-ignored and not distributed** — it lives only in the author's local copy at `data/raw/CoffeeData.xlsx` and is consumed via [`configs/bloomberg.yaml`](configs/bloomberg.yaml).
+The study was conducted on a **Bloomberg** OHLCV daily dataset. The file is **git-ignored and not distributed** — it lives only in a local copy at `data/raw/CoffeeData.xlsx` and is consumed via [`configs/bloomberg.yaml`](configs/bloomberg.yaml).
 
-So that anyone cloning this repository can still run the pipeline end-to-end, `scripts/download_data.py` rebuilds a comparable universe from **free Yahoo Finance data** (`KC=F` for the Arabica future), which the default config points at. Futures roll methodology, adjustments and listing coverage differ between the two sources, so expect qualitatively similar behaviour rather than the exact reported figures. Details in [`data/README.md`](data/README.md).
+So that anyone cloning this repository can still run the pipeline end-to-end, `scripts/download_data.py` rebuilds a comparable universe from **free Yahoo Finance data** (`KC=F` for the Arabica future), which the default config points at. Details in [`data/README.md`](data/README.md).
 
-For reference, a validation run on the free Yahoo dataset reproduces the study's qualitative findings: SJM is the only candidate cointegrated with KC1 at the 5% level, the strategy compresses volatility to roughly half of the KC1 benchmark's, and performance remains highly sensitive to the threshold configuration.
 
 ## The main statistical limitation
 

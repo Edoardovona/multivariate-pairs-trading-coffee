@@ -1,12 +1,11 @@
 # Data
 
-## Original study (results in the report and README)
+## Original study (results in the main README)
 
-The results reported in [`reports/Multivariate_Pair_Trading.pdf`](../reports/Multivariate_Pair_Trading.pdf)
-were produced with **daily Bloomberg data** (OHLCV, 2016-02-12 to 2026-02-12):
-`KC1` Arabica front-month continuous future, `DF1` Robusta, six sector ETFs/ETNs
-and 17 coffee-value-chain equities. Bloomberg data it is not distributed with this repository
-(everything under `data/raw/` is git-ignored by design).
+The results reported were produced with **daily Bloomberg data** 
+(OHLCV; 2016-02-12 to 2026-02-12;  2,610 rows × 25 assets): `KC1` Arabica front-month continuous future,
+`DF1` Robusta, six sector ETFs/ETNs and 17 coffee-value-chain equities.
+Bloomberg data it is not distributed with this repository (everything under `data/raw/` is git-ignored by design).
 
 The author's local copy lives at `data/raw/CoffeeData.xlsx` and is used via
 
@@ -28,12 +27,9 @@ python scripts/download_data.py
 downloads a comparable universe (KC=F for Arabica, XLP, and the candidate
 equities) to `data/raw/prices.csv`.
 
-**Note that Yahoo series are not identical to Bloomberg's**. The futures roll
-methodology differs, prices are adjusted differently for corporate actions, and
-some tickers from the original universe (COFF ETN, NESN on SIX, late-listed
-names) are unavailable or partial. Expect the pipeline to run end-to-end and
-produce qualitatively similar behaviour, but not the exact figures in the report.
+**Note that Yahoo series are not identical to Bloomberg's**. Futures roll methodology, adjustments and listing coverage can differ between the two sources, so expect qualitatively similar behaviour rather than the exact reported figures. Furthermore, some tickers from the original universe (COFF ETN, NESN on SIX, late-listed names) may be unavailable or partial.
 This is the source `configs/default.yaml` points at.
+
 
 ## Canonical format after loading
 

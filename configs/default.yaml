@@ -12,14 +12,16 @@ data:
 universe:
   anchor: KC1                   # Arabica front-month future
   sector_proxy: XLP             # consumer staples sector control
-  equities: [SJM, KO, MDLZ, JVA]  # basket selected via in-sample screening
+  equities: [SJM, KO, MDLZ, JVA]  # fixed basket (used when reselect_basket: false)
+  n_pairs: 4                      # basket size when re-selecting per fold
   # Assets excluded from screening: proxies and late-listed equities
   exclude: [DF1, COFF, DBA, MOO, XLP, PBJ, DBC,
-            WEST, BROS, BRCC, JDEP, LKNCY, REBN, THCH]
+            WEST, BROS, BRCC, JDEP, LKNCY, REBN, THCH, KDP]
 
 walk_forward:
   calibration_years: 4          # rolling (fixed-length) calibration window
   test_months: 12               # length of each out-of-sample fold
+  reselect_basket: true         # re-run ADF + Engle-Granger screen per fold
   embargo_days: 21              # gap between calibration end and test start
 
 signals:

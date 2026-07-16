@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from . import backtest, hedging, signals
+from . import backtest, hedging, signals, stat_tests
 from .metrics import sharpe_ratio
 
 TRADING_DAYS_PER_YEAR = 252
@@ -88,6 +88,31 @@ def walk_forward_folds(
     return folds
 
 
+def select_basket(
+    log_calibration: pd.DataFrame,
+    anchor: str,
+    candidates: list[str],
+    n_pairs: int = 4,
+    adf_significance: float = 0.05,
+) -> list[str]:
+    """Re-select the equity basket on a calibration window.
+
+    Applies the same screening as the original study, but on the current
+    calibration window only: candidates must be I(1) (ADF fails to reject
+    the unit root) and are then ranked by Engle-Granger cointegration with
+    the anchor. Candidates with a negative hedge ratio are discarded — an
+    inverted long-run relationship is statistically admissible but is not
+    the co-movement a spread strategy trades. Returns the top ``n_pairs``.
+    """
+    adf = stat_tests.adf_screen(log_calibration[candidates])
+    nonstationary = adf.loc[adf["p_value"] > adf_significance, "asset"].tolist()
+    eg = stat_tests.engle_granger_screen(
+        log_calibration[[anchor] + nonstationary], anchor
+    )
+    eg = eg[eg["beta"] > 0]
+    return eg.head(n_pairs)["asset"].tolist()
+
+
 def calibrate_thresholds(
     log_calibration: pd.DataFrame,
     equities: list[str],
@@ -129,11 +154,16 @@ def run_walk_forward(
     risk_free_rate: float = 0.04,
     rolling_beta_window: int = 252,
     solver: str = "auto",
+    candidates: list[str] | None = None,
+    n_pairs: int = 4,
     verbose: bool = True,
 ) -> WalkForwardResult:
     """Run the full rolling walk-forward evaluation.
 
-    Per fold, estimated on the calibration window only: signal thresholds
+    Per fold, estimated on the calibration window only: the equity basket
+    (when ``candidates`` is given, the ADF + Engle-Granger screen is re-run
+    on each calibration window and the top ``n_pairs`` names are selected;
+    otherwise the fixed ``equities`` basket is used), signal thresholds
     (plateau of the grid search), mean-reversion speed, average returns
     and pair covariance matrices. The rolling betas are computed once —
     they only ever use the trailing ``rolling_beta_window`` days, so they
@@ -149,31 +179,38 @@ def run_walk_forward(
         raise ValueError("Sample too short for the requested fold structure")
 
     rolling = hedging.rolling_betas(
-        log_prices, equities, features, anchor, window=rolling_beta_window
+        log_prices, candidates or equities, features, anchor,
+        window=rolling_beta_window,
     )
 
     segments, records, all_trades = [], [], []
     for i, (cal_idx, test_idx) in enumerate(folds, start=1):
         log_cal = log_prices.loc[cal_idx]
 
+        basket = (
+            select_basket(log_cal, anchor, candidates, n_pairs)
+            if candidates
+            else equities
+        ) or equities  # degenerate window with no eligible candidate
+
         open_th, close_th = calibrate_thresholds(
-            log_cal, equities, anchor, window=window,
+            log_cal, basket, anchor, window=window,
             risk_free_rate=risk_free_rate,
         )
         _, residuals = hedging.estimate_static_betas(
-            log_cal, equities, features, anchor
+            log_cal, basket, features, anchor
         )
         covariances = hedging.pair_covariances(
-            log_cal[anchor].diff().dropna(), residuals.diff().dropna(), equities
+            log_cal[anchor].diff().dropna(), residuals.diff().dropna(), basket
         )
         time_to_mean = signals.compute_time_to_mean(
-            log_cal, equities, anchor, open_th, close_th, window=window
+            log_cal, basket, anchor, open_th, close_th, window=window
         )
         avg_ret_anchor = log_cal[anchor].diff().dropna().mean()
-        avg_ret_equity = {s: log_cal[s].diff().dropna().mean() for s in equities}
+        avg_ret_equity = {s: log_cal[s].diff().dropna().mean() for s in basket}
 
         result = backtest.run_strategy(
-            log_prices, equities, anchor,
+            log_prices, basket, anchor,
             split_date=test_idx[0], end_date=test_idx[-1],
             rolling_betas=rolling, covariances=covariances,
             time_to_mean=time_to_mean,
@@ -192,6 +229,7 @@ def run_walk_forward(
                 "cal_start": cal_idx[0].date(),
                 "test_start": test_idx[0].date(),
                 "test_end": test_idx[-1].date(),
+                "basket": ",".join(basket),
                 "open_th": open_th,
                 "close_th": close_th,
                 "n_trades": len(result.trades),
@@ -203,6 +241,7 @@ def run_walk_forward(
             print(
                 f"fold {i}: calibrate {cal_idx[0].date()} -> {cal_idx[-1].date()}"
                 f" | test {test_idx[0].date()} -> {test_idx[-1].date()}"
+                f" | basket [{','.join(basket)}]"
                 f" | thresholds +/-{open_th}/+/-{close_th}"
                 f" | {len(result.trades)} trades | Sharpe {result.sharpe:.3f}"
             )
