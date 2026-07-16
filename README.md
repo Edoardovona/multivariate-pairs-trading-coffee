@@ -17,15 +17,17 @@ The project was developed for the *Commodities Markets and Models* course, where
 
 **Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. The equity basket itself is re-selected on every calibration window (ADF + Engle-Granger screen, top-4 positive-hedge-ratio names), so nothing in the pipeline is frozen on information the fold could not have had.
 
-| Metric | MPTS walk-forward | B&H KC1 | B&H EW basket |
-|---|---|---|---|
-| Sharpe ratio | −0.15 | 0.53 | −0.03 |
-| Annualized return | 1.5% | 18.5% | 0.7% |
-| Annualized volatility | **11.5%** | 37.7% | 22.8% |
-| Max drawdown | **−18.8%** | −44.3% | −46.1% |
-| Trades | 167 (61% winners) | — | — |
+The risk-aversion coefficient λ is the strategy's aggressiveness dial (report, Section 4.2): a lower λ weakens the variance penalty and sizes positions up toward the capital bound. It scales position size, not signal timing — trade entries are threshold-driven — so returns and volatility move together while the Sharpe barely changes. Under the paper's no-leverage constraint, gross exposure is capped at 100% of capital, which bounds how aggressive the strategy can get: λ → 0 saturates that bound.
 
-![Walk-forward equity curve vs benchmarks](reports/figures/walk_forward_equity.png)
+| Metric | MPTS λ=0.25 | MPTS λ=1 | MPTS λ=5 | B&H KC1 | B&H EW basket |
+|---|---|---|---|---|---|
+| Sharpe ratio | −0.07 | −0.15 | −0.30 | 0.53 | −0.03 |
+| Annualized return | 2.4% | 1.5% | 0.9% | 18.5% | 0.7% |
+| Annualized volatility | 11.9% | **11.5%** | 8.8% | 37.7% | 22.8% |
+| Max drawdown | −20.9% | **−18.8%** | −18.7% | −44.3% | −46.1% |
+| Trades | — | 167 (61% winners) | — | — | — |
+
+![Walk-forward equity curves vs benchmarks](reports/figures/walk_forward_equity.png)
 
 Per-fold diagnostics (basket and thresholds re-estimated on each rolling calibration window):
 
