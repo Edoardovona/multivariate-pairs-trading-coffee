@@ -5,11 +5,11 @@ A Python implementation and extension of:
 > Yang, H., & Malik, A. (2024). Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform. 
 > International Journal of Financial Studies, 12(3), 77.
 
-This repository transposes the multivariate pair-trading framework above from its native cryptocurrency/fiat setting to the coffee market: a basket of spreads between the Arabica front-month future (KC1) and coffee value-chain equities, on ten years of daily Bloomberg data (2016–2026). The transposition is not a mechanical one — where crypto/fiat pairs are near-perfectly cointegrated by construction, the long-run link between a soft commodity and listed equities must be established statistically, and much of the project revolves around what happens when that foundation is weak.
+This repository transposes the multivariate pair-trading framework above from its native cryptocurrency/fiat setting to the coffee market: a basket of spreads between the Arabica front-month future (`KC1`) and coffee value-chain equities, on ten years of daily Bloomberg data (2016–2026). The transposition is not a mechanical one — where crypto/fiat pairs are near-perfectly cointegrated by construction, the long-run link between a soft commodity and listed equities must be established statistically, and much of the project revolves around what happens when that foundation is weak.
 
 Relative to the reference implementation, the pipeline adds a rolling walk-forward validation in place of a single chronological split, threshold calibration to limit selection bias, a dual-backend convex optimizer (Gurobi, with a SciPy fallback so the results are reproducible), and an alternative data path via Yahoo Finance.
 
-The project was developed for the *Commodities Markets and Models* course, where each student replicated an assigned paper on an assigned commodity.
+The project was developed for the *Commodities Markets and Models* course, where each student replicated an trading strategy on an assigned commodity.
 
 ---
 
@@ -17,9 +17,9 @@ The project was developed for the *Commodities Markets and Models* course, where
 
 **Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. The equity basket itself is re-selected on every calibration window (ADF + Engle-Granger screen, top-4 positive-hedge-ratio names), so nothing in the pipeline is frozen on information the fold could not have had.
 
-Two dials control aggressiveness, both reported below. The risk-aversion coefficient **λ** (report, Section 4.2) sizes positions: a lower λ weakens the variance penalty and pushes allocations toward the gross-exposure budget; it does not change entry/exit timing, which is threshold-driven. **Gross exposure** extends the paper's no-leverage constraint to a levered book: the runs below use **2× gross** (long + short legs, in units of NAV) — conservative relative to the 2–4× typical of market-neutral equity books — with the borrowed portion **financed daily at the risk-free rate**, so leverage is not free. Values above 4× are rejected as unrealistic.
+Two dials control aggressiveness, both reported below. The risk-aversion coefficient **$\lambda$** sizes positions: a lower $\lambda$ weakens the variance penalty and pushes allocations toward the gross-exposure budget; it does not change entry/exit timing, which is threshold-driven. **Gross exposure** extends the paper's no-leverage constraint to a levered book: the runs below use **2× gross** (long + short legs, in units of NAV) with the borrowed portion **financed daily at the risk-free rate**, so leverage is not free. Values above 4× are rejected as unrealistic.
 
-| Metric | MPTS λ=0.25 | MPTS λ=1 | MPTS λ=5 | B&H KC1 | B&H EW basket |
+| Metric | MPTS $\lambda$=0.25 | MPTS $\lambda$=1 | MPTS $\lambda$=5 | B&H KC1 | B&H EW basket |
 |---|---|---|---|---|---|
 | Sharpe ratio | **+0.15** | +0.05 | −0.13 | 0.53 | −0.03 |
 | Annualized return | 4.8% | 2.6% | 1.8% | 18.5% | 0.7% |
@@ -30,7 +30,7 @@ Two dials control aggressiveness, both reported below. The risk-aversion coeffic
 
 ![Walk-forward equity curves per lambda vs benchmarks](reports/figures/walk_forward_equity.png)
 
-Per-fold diagnostics at λ=1 (basket and thresholds re-estimated on each rolling calibration window):
+Per-fold diagnostics at $\lambda$=1 (basket and thresholds re-estimated on each rolling calibration window):
 
 | Fold | Test window | Basket | Thresholds (open/close) | Trades | Sharpe |
 |---|---|---|---|---|---|
@@ -46,7 +46,7 @@ Median fold Sharpe **−0.92**, range **[−2.93, +1.58]**.
 
 **Reading the fold table.** The *median* fold Sharpe is reported next to the aggregate because with only 7 folds the mean is dominated by outliers (fold 7 is a 3-month stub); the median describes the typical fold, the range describes the dispersion, and a strategy whose fold Sharpe flips sign this often is regime-dependent regardless of the aggregate. Note also how the selected basket rotates — SJM/FARM in the calm regime, the large-cap staples later — and that some folds retain fewer than 4 names because the positive-hedge-ratio and unit-root filters leave fewer eligible candidates.
 
-The walk-forward machinery behaves as designed: baskets and thresholds adapt fold by fold, volatility stays well below the KC1 benchmark's at every setting, and the aggressive configuration (λ=0.25, 2× gross) ends mildly positive net of transaction and financing costs. The honest caveat is that the aggressiveness dials change the *magnitude* of the P&L, not its quality: fold-level Sharpe still flips sign across regimes, so the mild aggregate edge is fragile rather than structural. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded reliably where cointegration is weak and unstable — and it is precisely the conclusion a single favorable split can hide.
+The walk-forward machinery behaves as designed: baskets and thresholds adapt fold by fold, volatility stays well below the KC1 benchmark's at every setting, and the aggressive configuration ($\lambda$=0.25, 2× gross) ends mildly positive net of transaction and financing costs. The honest caveat is that the aggressiveness dials change the *magnitude* of the P&L, not its quality: fold-level Sharpe still flips sign across regimes, so the mild aggregate edge is fragile rather than structural. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded reliably where cointegration is weak and unstable — and it is precisely the conclusion a single favorable split can hide.
 
 ---
 
@@ -115,8 +115,9 @@ multivariate-pairs-coffee/
 │   └── metrics.py              # Sharpe, drawdown, trade-level statistics
 ├── tests/                      # pytest unit tests (no license, no network needed)
 ├── reports/
-│   ├── Multivariate_Pair_Trading.pdf    # full write-up
-│   └── figures/                
+│   ├── figures/                # committed figures embedded in this README
+│   ├── equity_curves.csv       # generated by run_backtest.py (git-ignored)
+│   └── walk_forward_folds.csv  # generated by run_backtest.py (git-ignored)
 ├── requirements.txt
 └── LICENSE
 ```
