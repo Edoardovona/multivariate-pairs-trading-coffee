@@ -122,6 +122,7 @@ def main() -> None:
             risk_free_rate=rf,
             rolling_beta_window=cfg["strategy"]["rolling_beta_window"],
             solver=cfg["strategy"]["solver"],
+            max_gross_exposure=cfg["strategy"].get("max_gross_exposure", 1.0),
             verbose=(lam == base_lambda),
         )
     base = results[base_lambda]

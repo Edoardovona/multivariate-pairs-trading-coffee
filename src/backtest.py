@@ -44,6 +44,7 @@ def run_strategy(
     solver: str = "auto",
     min_free_capital: float = 0.01,
     end_date: pd.Timestamp | None = None,
+    max_gross_exposure: float = 1.0,
 ) -> BacktestResult:
     """Run the daily out-of-sample simulation.
 
@@ -51,8 +52,14 @@ def run_strategy(
     beta-scaled anchor hedge), close positions whose z-score reverted
     inside the close band (deducting exit costs), then hand newly
     triggered signals to the optimizer, which sizes them subject to the
-    no-leverage and beta-neutrality constraints. The beta active at entry
-    is locked for the life of the position.
+    gross-exposure and beta-neutrality constraints. The beta active at
+    entry is locked for the life of the position.
+
+    ``max_gross_exposure`` is the capital budget in units of portfolio
+    value: 1.0 reproduces the reference paper's no-leverage constraint;
+    values above 1.0 allow a levered book, with the borrowed portion
+    charged daily at the risk-free rate. Market-neutral equity books
+    typically run 2-4x gross, so values above 4.0 are rejected.
 
     The simulation runs from ``split_date`` to ``end_date`` (inclusive;
     defaults to the last observation). Positions still open on the final
@@ -62,6 +69,11 @@ def run_strategy(
     All prices are log-prices; position weights are fractions of the
     portfolio, so the daily PnL is expressed in return space.
     """
+    if not 1.0 <= max_gross_exposure <= 4.0:
+        raise ValueError(
+            "max_gross_exposure must be within [1.0, 4.0] "
+            "(typical market-neutral leverage)"
+        )
     # Numpy views of everything the daily loop touches
     prices = {a: log_prices[a].to_numpy() for a in [anchor, *equities]}
     zscores = {
@@ -97,8 +109,14 @@ def run_strategy(
         else log_prices.index.get_loc(end_date) + 1
     )
 
+    daily_financing_rate = (1 + risk_free_rate) ** (1 / 252) - 1
+
+    def gross_exposure() -> float:
+        return sum(abs(positions[s]) * (1 + abs(active_betas[s])) for s in equities)
+
     for t in range(start_idx, end_idx):
-        # 1. Mark-to-market of open positions (t-1 -> t)
+        # 1. Mark-to-market of open positions (t-1 -> t), plus financing on
+        # the levered portion of the book carried overnight
         ret_anchor = prices[anchor][t] - prices[anchor][t - 1]
         for stock in equities:
             if positions[stock] != 0:
@@ -106,6 +124,7 @@ def run_strategy(
                 w_equity = positions[stock]
                 w_anchor = -w_equity * active_betas[stock]
                 pnl[t] += w_equity * ret_equity + w_anchor * ret_anchor
+        pnl[t] -= max(0.0, gross_exposure() - 1.0) * daily_financing_rate
 
         # 2. Exits: z-score reverted inside the close band
         for stock in equities:
@@ -128,10 +147,7 @@ def run_strategy(
 
         # 4. Optimal sizing of the new positions
         if triggered:
-            used_capital = sum(
-                abs(positions[s]) * (1 + abs(active_betas[s])) for s in equities
-            )
-            available_capital = max(0.0, 1.0 - used_capital)
+            available_capital = max(0.0, max_gross_exposure - gross_exposure())
             if available_capital > min_free_capital:
                 allocations = optimize_allocations(
                     triggered,

@@ -17,35 +17,36 @@ The project was developed for the *Commodities Markets and Models* course, where
 
 **Rolling walk-forward validation** on the Bloomberg dataset: 7 folds, each calibrated on a fixed 4-year window and traded on the following 12 months, stitched out-of-sample window Jan 2020 → Feb 2026 (~6 years of test data), $10,000 initial capital, 10 bps transaction costs per leg, Gurobi solver. The equity basket itself is re-selected on every calibration window (ADF + Engle-Granger screen, top-4 positive-hedge-ratio names), so nothing in the pipeline is frozen on information the fold could not have had.
 
-The risk-aversion coefficient λ is the strategy's aggressiveness dial (report, Section 4.2): a lower λ weakens the variance penalty and sizes positions up toward the capital bound. It scales position size, not signal timing — trade entries are threshold-driven — so returns and volatility move together while the Sharpe barely changes. Under the paper's no-leverage constraint, gross exposure is capped at 100% of capital, which bounds how aggressive the strategy can get: λ → 0 saturates that bound.
+Two dials control aggressiveness, both reported below. The risk-aversion coefficient **λ** (report, Section 4.2) sizes positions: a lower λ weakens the variance penalty and pushes allocations toward the gross-exposure budget; it does not change entry/exit timing, which is threshold-driven. **Gross exposure** extends the paper's no-leverage constraint to a levered book: the runs below use **2× gross** (long + short legs, in units of NAV) — conservative relative to the 2–4× typical of market-neutral equity books — with the borrowed portion **financed daily at the risk-free rate**, so leverage is not free. Values above 4× are rejected as unrealistic.
 
 | Metric | MPTS λ=0.25 | MPTS λ=1 | MPTS λ=5 | B&H KC1 | B&H EW basket |
 |---|---|---|---|---|---|
-| Sharpe ratio | −0.07 | −0.15 | −0.30 | 0.53 | −0.03 |
-| Annualized return | 2.4% | 1.5% | 0.9% | 18.5% | 0.7% |
-| Annualized volatility | 11.9% | **11.5%** | 8.8% | 37.7% | 22.8% |
-| Max drawdown | −20.9% | **−18.8%** | −18.7% | −44.3% | −46.1% |
-| Trades | — | 167 (61% winners) | — | — | — |
+| Sharpe ratio | **+0.15** | +0.05 | −0.13 | 0.53 | −0.03 |
+| Annualized return | 4.8% | 2.6% | 1.8% | 18.5% | 0.7% |
+| Total return | 30.9% | 16.1% | 10.7% | 166% | 3.9% |
+| Annualized volatility | 22.5% | 22.4% | **11.6%** | 37.7% | 22.8% |
+| Max drawdown | −29.8% | −31.1% | **−27.2%** | −44.3% | −46.1% |
+| Trades | — | 174 (57% winners) | — | — | — |
 
-![Walk-forward equity curves vs benchmarks](reports/figures/walk_forward_equity.png)
+![Walk-forward equity curves per lambda vs benchmarks](reports/figures/walk_forward_equity.png)
 
-Per-fold diagnostics (basket and thresholds re-estimated on each rolling calibration window):
+Per-fold diagnostics at λ=1 (basket and thresholds re-estimated on each rolling calibration window):
 
 | Fold | Test window | Basket | Thresholds (open/close) | Trades | Sharpe |
 |---|---|---|---|---|---|
-| 1 | Jan 2020 – Dec 2020 | SJM, FARM | ±1.6 / ±0.8 | 26 | **+0.66** |
-| 2 | Jan 2021 – Nov 2021 | JVA, FARM | ±1.7 / ±0.8 | 25 | +0.10 |
-| 3 | Dec 2021 – Nov 2022 | SJM, MCD, NSGRY, KO | ±2.2 / ±0.8 | 27 | −2.75 |
-| 4 | Dec 2022 – Nov 2023 | MDLZ, MCD, KO, SJM | ±2.4 / ±1.1 | 22 | −2.06 |
-| 5 | Dec 2023 – Oct 2024 | KO, NESN, NSGRY, MCD | ±2.3 / ±1.0 | 14 | −1.01 |
-| 6 | Nov 2024 – Oct 2025 | KO, MCD, NESN, MDLZ | ±1.7 / ±0.7 | 44 | **+1.19** |
-| 7 | Nov 2025 – Feb 2026 (short) | JVA, MCD | ±1.3 / ±1.0 | 9 | −3.09 |
+| 1 | Jan 2020 – Dec 2020 | SJM, FARM | ±1.6 / ±0.8 | 26 | **+0.74** |
+| 2 | Jan 2021 – Nov 2021 | JVA, FARM | ±1.7 / ±0.8 | 25 | +0.17 |
+| 3 | Dec 2021 – Nov 2022 | SJM, MCD, NSGRY, KO | ±2.2 / ±0.8 | 29 | −2.23 |
+| 4 | Dec 2022 – Nov 2023 | MDLZ, MCD, KO, SJM | ±2.4 / ±1.1 | 23 | −1.86 |
+| 5 | Dec 2023 – Oct 2024 | KO, NESN, NSGRY, MCD | ±2.3 / ±1.0 | 14 | −0.92 |
+| 6 | Nov 2024 – Oct 2025 | KO, MCD, NESN, MDLZ | ±1.7 / ±0.7 | 48 | **+1.58** |
+| 7 | Nov 2025 – Feb 2026 (short) | JVA, MCD | ±1.3 / ±1.0 | 9 | −2.93 |
 
-Median fold Sharpe **−1.01**, range **[−3.09, +1.19]**.
+Median fold Sharpe **−0.92**, range **[−2.93, +1.58]**.
 
 **Reading the fold table.** The *median* fold Sharpe is reported next to the aggregate because with only 7 folds the mean is dominated by outliers (fold 7 is a 3-month stub); the median describes the typical fold, the range describes the dispersion, and a strategy whose fold Sharpe flips sign this often is regime-dependent regardless of the aggregate. Note also how the selected basket rotates — SJM/FARM in the calm regime, the large-cap staples later — and that some folds retain fewer than 4 names because the positive-hedge-ratio and unit-root filters leave fewer eligible candidates.
 
-The walk-forward machinery behaves as designed: baskets and thresholds adapt fold by fold, and risk control is the strongest of any configuration tested (volatility less than a third of the KC1 benchmark's, drawdown less than half). What no amount of adaptation can do is manufacture an edge: the aggregate Sharpe remains slightly negative. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded profitably where cointegration is weak and unstable — and it is precisely the conclusion a single favorable split can hide.
+The walk-forward machinery behaves as designed: baskets and thresholds adapt fold by fold, volatility stays well below the KC1 benchmark's at every setting, and the aggressive configuration (λ=0.25, 2× gross) ends mildly positive net of transaction and financing costs. The honest caveat is that the aggressiveness dials change the *magnitude* of the P&L, not its quality: fold-level Sharpe still flips sign across regimes, so the mild aggregate edge is fragile rather than structural. That is the expected outcome given [the statistical limitation below](#the-main-statistical-limitation) — mean reversion cannot be traded reliably where cointegration is weak and unstable — and it is precisely the conclusion a single favorable split can hide.
 
 ---
 
@@ -78,7 +79,7 @@ $$\max_{W}\; \sum_n W_n \cdot (EP_n \odot [1,-1])^{\prime} \;-\; \lambda \sum_n 
 $$\text{s.t.}\quad 0 \le W_{long} \le 1,\quad -1 \le W_{short} \le 0,\quad \sum_n (W_{long} - W_{short}) \le \text{capital},\quad \sum_e \beta_{e}\,(W_{long}+W_{short}) = 0$$
 
    where the expected profit *EP* combines train-window mean returns with a mean-reversion-speed proxy (average round-trip holding time), and Σ̃ is the pair covariance with sign-flipped off-diagonals. Solved with **Gurobi** (original study) or an open-source **SciPy SLSQP** fallback so anyone can run it.
-6. **Backtest** — daily simulation over each test fold with mark-to-market, per-leg transaction costs, capital recycling, trade logging and forced liquidation at fold boundaries; benchmarked against KC1 buy-and-hold and an equally weighted equity basket over the same stitched period.
+6. **Backtest** — daily simulation over each test fold with mark-to-market, per-leg transaction costs, capital recycling, trade logging and forced liquidation at fold boundaries; benchmarked against KC1 buy-and-hold and an equally weighted equity basket over the same stitched period. The capital budget is set by `max_gross_exposure`: 1.0 reproduces the paper's no-leverage constraint, values up to 4× allow a levered market-neutral book with the borrowed portion financed daily at the risk-free rate, and anything beyond 4× is rejected as outside industry practice.
 
 <p align="center">
 <img src="reports/figures/zscore_signals_oos.png" width="70%" alt="Z-score signals over the OOS period"/>

@@ -36,6 +36,11 @@ strategy:
   # Aggressiveness sweep: lower lambda -> larger positions (size dial,
   # not signal timing). The pipeline runs the walk-forward once per value.
   risk_aversion_sweep: [0.25, 1.0, 5.0]
+  # Gross exposure budget (long + short legs, in units of NAV).
+  # 1.0 = the paper's no-leverage constraint; market-neutral books
+  # typically run 2-4x, so values above 4.0 are rejected. The
+  # borrowed portion is financed daily at the risk-free rate.
+  max_gross_exposure: 2.0
   transaction_cost: 0.001       # 10 bps per leg
   risk_free_rate: 0.04
   rolling_beta_window: 252

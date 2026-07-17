@@ -156,6 +156,7 @@ def run_walk_forward(
     solver: str = "auto",
     candidates: list[str] | None = None,
     n_pairs: int = 4,
+    max_gross_exposure: float = 1.0,
     verbose: bool = True,
 ) -> WalkForwardResult:
     """Run the full rolling walk-forward evaluation.
@@ -220,6 +221,7 @@ def run_walk_forward(
             window=window, risk_aversion=risk_aversion,
             transaction_cost=transaction_cost,
             risk_free_rate=risk_free_rate, solver=solver,
+            max_gross_exposure=max_gross_exposure,
         )
         segments.append(result.pnl)
         all_trades.extend(result.trades)
